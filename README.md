@@ -1,0 +1,87 @@
+# In-app log viewer
+
+A Compose log viewer for Android apps that use Timber. It can capture logs itself or display logs
+from an app-provided `LogSource`. The library has no automatic initializer: adding the dependency
+alone does not plant a tree or collect logs.
+
+The repository has a `:logviewer` Android library and a `:sample` app. It uses AGP 9.4.1, Kotlin
+2.4.20, Compose BOM 2026.09.00, Java 17 bytecode, and minSdk 26.
+
+## Include in a host app
+
+For local development, add this repository to the host's `settings.gradle.kts`:
+
+```kotlin
+includeBuild("../pnv-in-app-logs-viewer")
+```
+
+Use the library only in the debug variant by default:
+
+```kotlin
+dependencies {
+  debugImplementation("com.pedronveloso:logviewer:0.1.0")
+}
+```
+
+Keep all references to the library in `src/debug/`. If production code needs to reach a debug
+menu, use a small interface or variant-specific entry point with a no-op `src/release/`
+implementation. A release build then has no viewer classes, manifest provider, or viewer resources.
+Apps that deliberately want production access may use `implementation` instead.
+
+The library does not publish to Maven yet. A composite build substitutes the local `:logviewer`
+module for the coordinates above.
+
+## Capture with the library
+
+Create one capture in the host `Application` and explicitly install it. Keep it somewhere the
+debug screen can access it, such as a dependency-injection singleton:
+
+```kotlin
+val capture = TimberLogCapture(
+  context = this,
+  persistAcrossCrashes = true,
+  redact = { message -> sanitizeForDebugLogs(message) },
+)
+capture.install()
+```
+
+Then render it inside the app's theme and navigation:
+
+```kotlin
+LogViewer(source = capture, onBack = onBack)
+```
+
+`persistAcrossCrashes` defaults to `false`. Memory keeps the newest 1,000 entries by default.
+Persistent capture keeps at most two 1 MiB segments for each of the three newest process sessions
+under the app's private, non-backed-up storage. It syncs every accepted entry before Timber
+returns, so it adds disk latency to the logging call. Entries are limited to 12,000 message
+characters and marked when truncated. An incomplete tail record after a crash is discarded while
+earlier complete records remain readable. Disk failure leaves the in-memory store operating and
+appears on Status. Persistence covers process crashes; it does not claim durability against
+device power loss.
+
+The redaction function runs before either memory or disk storage. It should be fast and must not
+log through Timber, which would recurse. If it throws, the affected field is replaced with
+`<redaction failed>`. Logs and exports may contain sensitive app data; the host app owns its
+redaction policy. Sharing is a user action through an app-private temporary file and a non-exported
+`FileProvider`.
+
+## Use an existing store
+
+Implement `LogSource` to adapt an app's in-memory or persistent Timber store. Supply immutable
+session and entry snapshots, `capabilities` and `health` state flows, and a `changes` flow if new
+entries should appear automatically. Return `null` for `changes` if the viewer should offer only
+manual refresh. `LogEntry.id` must be unique and increasing within each session so list rows and
+Follow remain stable. Set `canClear = false` for a read-only source.
+
+Status cannot inspect arbitrary Timber trees. For an external source it reports persistence and
+redaction as claims made by the host app and displays any read or write errors the adapter exposes.
+The viewer uses the host's `MaterialTheme`; it does not depend on Lazulite or AltSea styles.
+
+## Try the sample
+
+Run `./gradlew :logviewer:testDebugUnitTest :sample:assembleDebug :sample:assembleRelease`, then
+install and launch the debug sample. Generate logs, open Logs, and use search, severity chips,
+Follow, copy, share, and Status. Tap **Crash app to test recovery**, relaunch the sample, open
+Logs, and select the previous session. The sample's release variant contains no viewer dependency
+or viewer screen.

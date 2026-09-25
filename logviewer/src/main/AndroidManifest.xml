@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="com.pedronveloso.logviewer.LogViewerFileProvider"
+            android:authorities="${applicationId}.pnvlogviewer.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/pnv_logviewer_paths" />
+        </provider>
+    </application>
+</manifest>

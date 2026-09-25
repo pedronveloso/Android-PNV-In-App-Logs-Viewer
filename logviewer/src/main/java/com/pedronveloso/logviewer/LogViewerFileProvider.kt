@@ -1,0 +1,6 @@
+package com.pedronveloso.logviewer
+
+import androidx.core.content.FileProvider
+
+/** A distinct component name prevents manifest merging with the host's own FileProvider. */
+class LogViewerFileProvider : FileProvider()
