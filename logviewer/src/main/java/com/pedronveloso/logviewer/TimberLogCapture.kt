@@ -81,25 +81,27 @@ class TimberLogCapture(
   override suspend fun sessions(): List<LogSession> =
     synchronized(lock) {
       val current = LogSession(sessionId, startedAt, true)
-      val diskSessions =
-        runCatching { journal?.sessions().orEmpty() }
-          .getOrElse {
-            mutableHealth.value =
-              mutableHealth.value.copy(readError = it.message ?: "Could not list sessions")
-            emptyList()
-          }
+      val diskSessions = runCatching {
+        journal?.sessions().orEmpty()
+      }
+        .getOrElse {
+          mutableHealth.value =
+            mutableHealth.value.copy(readError = it.message ?: "Could not list sessions")
+          emptyList()
+        }
       listOf(current) + diskSessions.filterNot { it.id == sessionId }
     }
 
   override suspend fun entries(sessionId: String): List<LogEntry> =
     synchronized(lock) {
-      val diskEntries =
-        runCatching { journal?.read(sessionId).orEmpty() }
-          .getOrElse {
-            mutableHealth.value =
-              mutableHealth.value.copy(readError = it.message ?: "Could not read logs")
-            emptyList()
-          }
+      val diskEntries = runCatching {
+        journal?.read(sessionId).orEmpty()
+      }
+        .getOrElse {
+          mutableHealth.value =
+            mutableHealth.value.copy(readError = it.message ?: "Could not read logs")
+          emptyList()
+        }
       if (sessionId != this.sessionId) diskEntries
       else (diskEntries + memory).associateBy(LogEntry::id).values.sortedBy(LogEntry::id)
     }
@@ -116,8 +118,10 @@ class TimberLogCapture(
     }
 
   private fun append(priority: Int, tag: String?, message: String) {
-    fun safeRedact(value: String): String =
-      runCatching { (redact?.invoke(value) ?: value) }.getOrDefault("<redaction failed>")
+    fun safeRedact(value: String): String = runCatching {
+      (redact?.invoke(value) ?: value)
+    }
+      .getOrDefault("<redaction failed>")
     val redactedMessage = safeRedact(message)
     val entryMessage =
       if (redactedMessage.length > MAX_MESSAGE_CHARS)
