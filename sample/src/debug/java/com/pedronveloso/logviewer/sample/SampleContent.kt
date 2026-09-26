@@ -18,14 +18,18 @@ import com.pedronveloso.logviewer.LogViewer
 import timber.log.Timber
 
 @Composable
-fun SampleContent() {
+fun SampleContent(modifier: Modifier = Modifier) {
   var showViewer by remember { mutableStateOf(false) }
   var count by remember { mutableIntStateOf(0) }
   if (showViewer) {
-    LogViewer(source = SampleApplication.capture, onBack = { showViewer = false })
+    LogViewer(
+      source = SampleApplication.capture,
+      onBack = { showViewer = false },
+      modifier = modifier,
+    )
   } else {
     Column(
-      Modifier.fillMaxSize().padding(24.dp),
+      modifier.fillMaxSize().padding(24.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Text("Log viewer sample")

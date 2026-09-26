@@ -5,6 +5,13 @@ plugins {
   alias(libs.plugins.spotless)
 }
 
+spotless {
+  kotlinGradle {
+    target("*.gradle.kts")
+    ktfmt().googleStyle()
+  }
+}
+
 subprojects {
   apply(plugin = "com.diffplug.spotless")
   configure<com.diffplug.gradle.spotless.SpotlessExtension> {

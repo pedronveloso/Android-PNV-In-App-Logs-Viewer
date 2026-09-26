@@ -19,6 +19,7 @@ android {
     targetCompatibility = JavaVersion.VERSION_17
   }
   buildFeatures { compose = true }
+  lint { warningsAsErrors = true }
   testOptions {
     unitTests.isIncludeAndroidResources = true
     unitTests.all {
@@ -29,6 +30,7 @@ android {
 }
 
 dependencies {
+  lintChecks(libs.composeLints)
   api(libs.timber)
   implementation(libs.coreKtx)
   api(libs.coroutinesAndroid)
