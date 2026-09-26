@@ -1,6 +1,7 @@
 package com.pedronveloso.logviewer.sample
 
 import android.app.Application
+import com.pedronveloso.logviewer.StandardLogRedactor
 import com.pedronveloso.logviewer.TimberLogCapture
 import timber.log.Timber
 
@@ -11,9 +12,7 @@ class SampleApplication : Application() {
       TimberLogCapture(
         this,
         persistAcrossCrashes = true,
-        redact = { text ->
-          Regex("token=[^\\s]+", RegexOption.IGNORE_CASE).replace(text, "token=<redacted>")
-        },
+        redact = StandardLogRedactor::redact,
       )
     Timber.plant(Timber.DebugTree())
     capture.install()

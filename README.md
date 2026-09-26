@@ -40,7 +40,7 @@ debug screen can access it, such as a dependency-injection singleton:
 val capture = TimberLogCapture(
   context = this,
   persistAcrossCrashes = true,
-  redact = { message -> sanitizeForDebugLogs(message) },
+  redact = StandardLogRedactor::redact,
 )
 capture.install()
 ```
@@ -60,11 +60,14 @@ earlier complete records remain readable. Disk failure leaves the in-memory stor
 appears on Status. Persistence covers process crashes; it does not claim durability against
 device power loss.
 
-The redaction function runs before either memory or disk storage. It should be fast and must not
-log through Timber, which would recurse. If it throws, the affected field is replaced with
-`<redaction failed>`. Logs and exports may contain sensitive app data; the host app owns its
-redaction policy. Sharing is a user action through an app-private temporary file and a non-exported
-`FileProvider`.
+`StandardLogRedactor` is an opt-in policy for URLs, common credential fields, Bearer and Basic
+values, email addresses, and UUIDs. Pass `StandardLogRedactor::redact` as shown above to use it;
+capture without a `redact` callback keeps text unchanged. The policy runs on messages, throwable
+stack traces, and tags before either memory or disk storage. Pattern matching cannot recognize
+every sensitive value, so avoid logging secrets and supply an app-specific callback if needed.
+The callback should be fast and must not log through Timber, which would recurse. If it throws,
+the affected field is replaced with `<redaction failed>`. Copy and share use captured entries;
+sharing is a user action through an app-private temporary file and a non-exported `FileProvider`.
 
 ## Use an existing store
 

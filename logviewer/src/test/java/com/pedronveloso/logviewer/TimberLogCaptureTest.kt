@@ -50,6 +50,48 @@ class TimberLogCaptureTest {
   }
 
   @Test
+  fun `standard policy redacts tags messages and throwable text before persistence`() =
+    runBlocking {
+      val capture =
+        TimberLogCapture(
+          context,
+          persistAcrossCrashes = true,
+          clock = { 1000L },
+          redact = StandardLogRedactor::redact,
+        )
+      capture.install()
+      Timber.tag("person@example.com")
+        .e(
+          IllegalStateException("password=hunter2"),
+          "Visited https://example.com/private?token=secret123",
+        )
+      capture.uninstall()
+
+      assertThat(capture.capabilities.value.redactionConfigured).isTrue()
+      val restarted = TimberLogCapture(context, persistAcrossCrashes = true, clock = { 2000L })
+      val previous = restarted.sessions().single { !it.isCurrent }
+      val stored = restarted.entries(previous.id).single()
+      assertThat(stored.tag).isEqualTo("<redacted>")
+      assertThat(stored.message).contains("https://example.com/<redacted>")
+      assertThat(stored.message).contains("password=<redacted>")
+      val exported = formatLogEntries(listOf(stored))
+      assertThat(exported).doesNotContain("person@example.com")
+      assertThat(exported).doesNotContain("secret123")
+      assertThat(exported).doesNotContain("hunter2")
+    }
+
+  @Test
+  fun `capture without a callback keeps existing opt in behavior`() = runBlocking {
+    val capture = TimberLogCapture(context)
+    capture.install()
+    Timber.tag("Private").d("password=hunter2")
+
+    assertThat(capture.capabilities.value.redactionConfigured).isFalse()
+    assertThat(capture.entries(capture.sessions().first().id).single().message)
+      .isEqualTo("password=hunter2")
+  }
+
+  @Test
   fun `concurrent emissions have stable unique IDs`() = runBlocking {
     val capture = TimberLogCapture(context, capacity = 4000)
     capture.install()
