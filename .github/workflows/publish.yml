@@ -1,0 +1,101 @@
+name: Publish to Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version already tagged as v<version> (for example, 0.3.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maven-central-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Validate version input
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a version such as 0.3.0" >&2
+            exit 1
+          fi
+
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/v${{ inputs.version }}
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+
+      - name: Verify tag matches library version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          library_version="$(./gradlew -q :logviewer:properties --property version | sed -n 's/^version: //p')"
+          if [[ "$library_version" != "$RELEASE_VERSION" ]]; then
+            echo "Tag version $RELEASE_VERSION does not match library version $library_version" >&2
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: ./gradlew spotlessCheck
+
+      - name: Run library unit tests
+        run: ./gradlew :logviewer:testDebugUnitTest
+
+      - name: Lint library and sample variants
+        run: ./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease
+
+      - name: Build sample variants
+        run: ./gradlew :sample:assembleDebug :sample:assembleRelease
+
+      - name: Verify the sample release excludes the viewer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          apk = Path("sample/build/outputs/apk/release/sample-release-unsigned.apk")
+          markers = (
+              b"Lcom/pedronveloso/logviewer/LogViewer;",
+              b"Lcom/pedronveloso/logviewer/TimberLogCapture;",
+              b"com.pedronveloso.logviewer.LogViewerFileProvider",
+              b"pnv_logviewer_paths",
+          )
+          with ZipFile(apk) as archive:
+              for name in archive.namelist():
+                  if "pnv_logviewer" in name.lower():
+                      raise SystemExit(f"Viewer content found in release APK: {name}")
+                  content = archive.read(name)
+                  if any(marker in content for marker in markers):
+                      raise SystemExit(f"Viewer content found in release APK: {name}")
+          PY
+
+      - name: Publish for manual approval in Central Portal
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+        run: |
+          : "${ORG_GRADLE_PROJECT_mavenCentralUsername:?Missing MAVEN_CENTRAL_USERNAME secret}"
+          : "${ORG_GRADLE_PROJECT_mavenCentralPassword:?Missing MAVEN_CENTRAL_PASSWORD secret}"
+          : "${ORG_GRADLE_PROJECT_signingInMemoryKey:?Missing SIGNING_IN_MEMORY_KEY secret}"
+          ./gradlew :logviewer:publishToMavenCentral
