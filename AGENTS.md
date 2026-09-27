@@ -10,7 +10,11 @@ The `docs/` directory contains maintainer documentation. Follow `docs/release.md
 and publishing a Maven Central release.
 
 `.github/workflows/opencode-review.yml` runs an advisory read-only review on pull requests. Treat
-its findings as a second opinion, not a gate, and do not change the workflow to relax a check.
+its findings as a second opinion, not a gate, and do not change the workflow to relax a check. The
+job skips Dependabot pull requests, which receive no Actions secrets.
+
+`.github/dependabot.yml` raises grouped dependency pull requests monthly for the Gradle version
+catalog and the pinned GitHub Actions.
 
 Treat log content as potentially sensitive. Apply redaction before captured entries reach memory
 or disk, and preserve the behavior of caller-provided `LogSource` implementations. When changing
@@ -22,6 +26,9 @@ Before calling any piece of work complete:
 
 1. Bump the `:logviewer` version for every change set and update the README dependency example.
    Follow the SemVer policy in the README; use the highest applicable bump for mixed changes.
+   Dependabot pull requests are exempt: merge them without a version bump or dependency-example
+   edit. The one exception is that a bump to AGP, Kotlin, or the Compose BOM must still update the
+   toolchain sentence at the top of the README, because that line documents the tested combination.
 2. Run `./gradlew spotlessApply`, then `./gradlew spotlessCheck`. Review the formatting changes.
 3. Run the library unit tests with `./gradlew :logviewer:testDebugUnitTest`.
 4. Run Android lint, including Compose lint, for both variants of both modules:
