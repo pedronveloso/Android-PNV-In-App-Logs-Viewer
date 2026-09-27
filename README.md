@@ -44,33 +44,8 @@ Use the highest applicable bump when a change set contains more than one kind of
 
 ## Publish a release
 
-Only `:logviewer`'s release AAR is published to Maven Central. Uploading creates a deployment
-that waits for manual approval in Central Portal; it does not make the artifact public by itself.
-The project is licensed under [Apache 2.0](LICENSE).
-
-1. Confirm that your [Central Portal account](https://central.sonatype.com/publishing/namespaces)
-   can publish to the existing `io.github.pedronveloso` namespace. You do not need another domain.
-2. Create or reuse a [Portal user token](https://central.sonatype.org/publish/generate-portal-token/)
-   and a [GPG signing key](https://central.sonatype.org/publish/requirements/gpg/) whose public key
-   has been distributed to a key server. The token's username and password are distinct from your
-   Portal sign-in credentials.
-3. In this repository's GitHub **Settings → Secrets and variables → Actions**, add repository
-   secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_IN_MEMORY_KEY`, and
-   `SIGNING_IN_MEMORY_KEY_PASSWORD`. Use the token's username and password. Set the signing key to
-   the complete, ASCII-armored private key from `gpg --export-secret-keys --armor <key-id>` and
-   the signing password to that key's passphrase. If the key has no passphrase, the password secret
-   may be omitted. Keep the exported private key out of logs and version control.
-4. Bump `:logviewer`'s version and the dependency example above using the [versioning policy](#versioning).
-   Run the checks in `AGENTS.md`, inspect the release publication, and review the changes.
-5. Commit and push the reviewed changes, then create and push a tag matching the version, such as
-   `git tag v0.3.0` and `git push origin v0.3.0`. The tag must point to the reviewed commit.
-6. On GitHub, open **Actions → Publish to Maven Central → Run workflow**, enter `0.3.0`, and run
-   it. The workflow checks out `v0.3.0`, verifies the library version, reruns the release checks,
-   signs the artifacts, and uploads them for manual approval. A failed run must be fixed and
-   retagged with a new version if that version was already published; Central versions are immutable.
-7. Open [Central Portal deployments](https://central.sonatype.com/publishing/deployments), inspect
-   the deployment and validation results, and click **Publish**. Once it is available, confirm a
-   fresh Android project resolves `io.github.pedronveloso:logviewer:0.3.0` from `mavenCentral()`.
+Follow the step-by-step [Maven Central release guide](docs/release.md). Only the `:logviewer`
+release AAR is published. The project is licensed under [Apache 2.0](LICENSE).
 
 ## Capture with the library
 

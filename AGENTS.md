@@ -6,6 +6,9 @@ theme, navigation, or log storage. Capture is opt-in: adding the dependency must
 Timber tree or start collecting logs. The sample's release variant must continue to exclude the
 viewer.
 
+The `docs/` directory contains maintainer documentation. Follow `docs/release.md` when preparing
+and publishing a Maven Central release.
+
 Treat log content as potentially sensitive. Apply redaction before captured entries reach memory
 or disk, and preserve the behavior of caller-provided `LogSource` implementations. When changing
 storage, filtering, follow behavior, or exports, add or update focused tests for the behavior.
