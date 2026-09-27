@@ -87,21 +87,6 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     return entries
   }
 
-  private fun encode(entry: LogEntry): ByteArray {
-    val encoder = Base64.getEncoder()
-    fun field(value: String) = encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-    return listOf(
-        entry.id,
-        entry.timestampMillis,
-        entry.priority,
-        field(entry.tag.orEmpty()),
-        field(entry.message),
-        field(entry.throwableStackTrace.orEmpty()),
-      )
-      .joinToString("\t")
-      .toByteArray(StandardCharsets.UTF_8)
-  }
-
   private fun decode(payload: ByteArray, sessionId: String): LogEntry {
     val parts = String(payload, StandardCharsets.UTF_8).split('\t')
     require(parts.size == 5 || parts.size == 6)
@@ -119,6 +104,23 @@ internal class DiskJournal(context: Context, private val currentId: String) {
   }
 
   companion object {
+    internal fun encodedRecordSize(entry: LogEntry): Int = HEADER_BYTES + encode(entry).size
+
+    private fun encode(entry: LogEntry): ByteArray {
+      val encoder = Base64.getEncoder()
+      fun field(value: String) = encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+      return listOf(
+          entry.id,
+          entry.timestampMillis,
+          entry.priority,
+          field(entry.tag.orEmpty()),
+          field(entry.message),
+          field(entry.throwableStackTrace.orEmpty()),
+        )
+        .joinToString("\t")
+        .toByteArray(StandardCharsets.UTF_8)
+    }
+
     private val VALID_ID = Regex("\\d{13}-[0-9a-f]{8}")
     private val SESSION_FILE = Regex("s-(\\d{13}-[0-9a-f]{8})\\.[01]")
     private const val HEADER_BYTES = 8
