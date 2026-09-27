@@ -19,7 +19,7 @@ Use the library only in the debug variant by default:
 
 ```kotlin
 dependencies {
-  debugImplementation("com.pedronveloso:logviewer:0.1.0")
+  debugImplementation("com.pedronveloso:logviewer:0.2.0")
 }
 ```
 
@@ -30,6 +30,15 @@ Apps that deliberately want production access may use `implementation` instead.
 
 The library does not publish to Maven yet. A composite build substitutes the local `:logviewer`
 module for the coordinates above.
+
+## Versioning
+
+The library uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every change set
+bumps the `:logviewer` version and keeps the dependency example above in sync. While the API is
+pre-1.0, bump MINOR for new features or breaking changes and PATCH for fixes, documentation, or
+tooling. From 1.0 onward, bump MAJOR for breaking API changes, MINOR for compatible features, and
+PATCH for fixes, documentation, or tooling.
+Use the highest applicable bump when a change set contains more than one kind of change.
 
 ## Capture with the library
 

@@ -14,11 +14,13 @@ storage, filtering, follow behavior, or exports, add or update focused tests for
 
 Before calling any piece of work complete:
 
-1. Run `./gradlew spotlessApply`, then `./gradlew spotlessCheck`. Review the formatting changes.
-2. Run the library unit tests with `./gradlew :logviewer:testDebugUnitTest`.
-3. Run Android lint, including Compose lint, for both variants of both modules:
+1. Bump the `:logviewer` version for every change set and update the README dependency example.
+   Follow the SemVer policy in the README; use the highest applicable bump for mixed changes.
+2. Run `./gradlew spotlessApply`, then `./gradlew spotlessCheck`. Review the formatting changes.
+3. Run the library unit tests with `./gradlew :logviewer:testDebugUnitTest`.
+4. Run Android lint, including Compose lint, for both variants of both modules:
    `./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease`.
-4. Fix failures and rerun the affected checks. Avoid broad lint suppressions or baselines; use a
+5. Fix failures and rerun the affected checks. Avoid broad lint suppressions or baselines; use a
    narrow suppression only for a demonstrated false positive.
 
 For changes that affect the sample or variant wiring, also build both sample variants with
