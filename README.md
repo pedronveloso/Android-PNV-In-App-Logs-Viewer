@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.4.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.4.1")
 }
 ```
 

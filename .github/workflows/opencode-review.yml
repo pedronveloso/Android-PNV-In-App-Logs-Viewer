@@ -1,0 +1,147 @@
+name: OpenCode Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The action requires the user who triggered the event to have admin or write
+    # on the repository. Keep the check advisory so an outside contributor's pull
+    # request reports a skipped review instead of a hard failure.
+    continue-on-error: true
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The agent diffs against the base branch, so it needs the full history.
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Run OpenCode review
+        uses: anomalyco/opencode/github@fe3f3a41f79ad292cc3c7c629567385a20ec5130
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_CONFIG_CONTENT: |
+            {
+              "$schema": "https://opencode.ai/config.json",
+              "default_agent": "pr-review",
+              "agent": {
+                "pr-review": {
+                  "description": "Read-only pull request reviewer",
+                  "mode": "primary",
+                  "temperature": 0.1,
+                  "permission": {
+                    "edit": "deny",
+                    "bash": {
+                      "*": "deny",
+                      "git diff*": "allow",
+                      "git log*": "allow",
+                      "git show*": "allow",
+                      "git status*": "allow",
+                      "git blame*": "allow"
+                    },
+                    "webfetch": "true",
+                    "websearch": "true"
+                  }
+                }
+              }
+            }
+        with:
+          model: opencode/big-pickle
+          use_github_token: true
+          prompt: |
+            Review this pull request following the repository guidelines in AGENTS.md.
+
+            Get the actual change with `git diff origin/main...HEAD`. The context you
+            are given lists changed files and line counts only, so read the diff and
+            the surrounding code before judging any hunk. Do not run Gradle, Spotless,
+            or any build command, and do not edit files. Android CI already runs
+            Spotless, both unit test tasks, all four lint tasks, and both sample
+            assembles.
+
+            Check for correctness and potential bugs first.
+
+            :logviewer is published to Maven Central, so verify the public contract.
+            Any change to a public symbol in com.pedronveloso.logviewer (LogViewer,
+            TimberLogCapture, LogSource, LogEntry, LogSession, LogCapabilities,
+            LogHealth, StandardLogRedactor, LogLevel, LogFilter, LogEntry.matches,
+            formatLogEntries, statusMessages, StatusMessage, LogViewerFileProvider)
+            needs a version bump in logviewer/build.gradle.kts and the matching README
+            dependency example, using the SemVer policy in the README. Flag a public
+            API change that ships without both. There is no binary-compatibility
+            validator, so this check is manual.
+
+            Verify the redaction boundary. Redaction must run before a captured entry
+            reaches memory or disk, and must cover message and tag. Any new field added
+            to the DiskJournal record payload or to formatLogEntries must be redacted on
+            the same path; flag raw text reaching storage or an export. The redactor must
+            not log through Timber, because that recurses, and it must stay fast since
+            it runs on the caller's thread.
+
+            Preserve caller-provided LogSource behavior. LogEntry.id must stay unique and
+            increasing within a session, changes may be null for a manual-refresh-only
+            source, and canClear = false must render read-only.
+
+            Verify capture stays opt-in. Adding the dependency must not plant a tree,
+            register a ContentProvider, or start collecting logs. Flag any startup hook
+            or auto-initializer.
+
+            Keep :logviewer independent of the host app. It must not reach for the host's
+            theme, navigation, or log storage, and it renders inside the host
+            MaterialTheme. Flag any new dependency on sample code or a host convention.
+
+            Check the sample's release exclusion. sample/build.gradle.kts must keep
+            debugImplementation(project(":logviewer")), and the src/debug and
+            src/release variants of SampleApplication and SampleContent must keep
+            matching signatures. CI scans the release APK for LogViewer,
+            TimberLogCapture, LogViewerFileProvider, and pnv_logviewer_paths, so flag
+            anything that puts viewer code or resources on the release path.
+
+            Check concurrency in TimberLogCapture. memory, nextId, planted, and
+            diskWritable are guarded by a single synchronized monitor, and DiskJournal
+            does blocking RandomAccessFile writes with an fd.sync() on the Timber
+            caller thread. Flag any new mutable state touched outside that lock, and
+            flag new work added to the logging path that adds caller-thread latency.
+
+            Check disk and export boundaries. Journal files belong under
+            noBackupFilesDir, session ids must stay validated against the
+            \d{13}-[0-9a-f]{8} pattern that guards path traversal, and the existing
+            bounds must hold: two 1 MiB segments per session, three newest sessions,
+            128 KiB per record, 12,000 message characters, 256 tag characters. Exports
+            go to cacheDir under pnv-logviewer-exports with 24h cleanup, shared through
+            a non-exported FileProvider whose authority is the applicationId plus
+            ".pnvlogviewer.fileprovider". Flag any new file path, any broader path
+            grant, and any exported component.
+
+            Require focused tests. AGENTS.md requires them for storage, filtering, follow,
+            and export changes. Known gaps worth asking about: no direct DiskJournal
+            test, no shareLogs or FileProvider test, no test for the entries()
+            disk-plus-memory merge, and no uninstall() idempotence test. Ask for a
+            regression test whenever a bug is fixed.
+
+            There's no need to check formatting and lint since other CI validations do that already.
+
+            All user-facing text is hardcoded English literals; there is no strings.xml
+            and no locale files in either module. The statusMessages wording in
+            LogPresentation.kt is asserted by tests in three test files, so flag any
+            status-message change that does not update those assertions.
+
+            Treat log content as sensitive. Do not copy log payloads or fixture text into
+            the review, and never commit secrets or signing credentials.
+
+            Suggest concrete, actionable improvements with file references.
+
+            Post the resulting review on the pull request.

@@ -9,6 +9,9 @@ viewer.
 The `docs/` directory contains maintainer documentation. Follow `docs/release.md` when preparing
 and publishing a Maven Central release.
 
+`.github/workflows/opencode-review.yml` runs an advisory read-only review on pull requests. Treat
+its findings as a second opinion, not a gate, and do not change the workflow to relax a check.
+
 Treat log content as potentially sensitive. Apply redaction before captured entries reach memory
 or disk, and preserve the behavior of caller-provided `LogSource` implementations. When changing
 storage, filtering, follow behavior, or exports, add or update focused tests for the behavior.
