@@ -34,9 +34,14 @@ fun SampleContent(modifier: Modifier = Modifier) {
     ) {
       Text("Log viewer sample")
       Button(
-        onClick = { Timber.tag("Sample").d("Generated message %d token=sample-secret", ++count) }
+        onClick = {
+          val batch = ++count
+          Timber.tag("Sample").d("Generated message %d token=sample-secret", batch)
+          Timber.tag("Sample").w("Generated warning %d: slow response", batch)
+          Timber.tag("Sample").e("Generated error %d: request failed", batch)
+        }
       ) {
-        Text("Generate a log")
+        Text("Generate logs")
       }
       Button(
         onClick = {

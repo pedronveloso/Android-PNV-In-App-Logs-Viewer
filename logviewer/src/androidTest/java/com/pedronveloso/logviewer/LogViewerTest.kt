@@ -2,10 +2,14 @@ package com.pedronveloso.logviewer
 
 import android.util.Log
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -77,17 +81,92 @@ class LogViewerTest {
     }
   }
 
+  @Test
+  fun warningAndErrorCountsAreSessionWideAndCapped() {
+    val source = FakeSource()
+    source.sessionList = listOf(LogSession("current", 0, true), LogSession("previous", 1, false))
+    source.recordsBySession["previous"] =
+      listOf(
+        LogEntry(1, "previous", 0, Log.WARN, "Other", "Previous warning"),
+        LogEntry(2, "previous", 0, Log.ERROR, "Other", "Previous error"),
+        LogEntry(3, "previous", 0, Log.ERROR, "Other", "Another error"),
+        LogEntry(4, "previous", 0, Log.ASSERT, "Other", "Assertion"),
+      )
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.onNodeWithText("W 0", useUnmergedTree = true).assertExists()
+    compose.onNodeWithText("E 0", useUnmergedTree = true).assertExists()
+
+    source.records =
+      (0 until 99).map {
+        LogEntry(it.toLong(), "current", 0, Log.WARN, "Batch", "Warning $it")
+      } + LogEntry(100, "current", 0, Log.ERROR, "Batch", "Error")
+    compose.onNodeWithTag("refresh_logs").performClick()
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("W 99", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText("E 1", useUnmergedTree = true).assertExists()
+
+    source.records = source.records + LogEntry(101, "current", 0, Log.WARN, "Batch", "More")
+    compose.onNodeWithTag("refresh_logs").performClick()
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("W 99+", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("log_search").performTextInput("no match")
+    compose.onNodeWithText("W 99+", useUnmergedTree = true).assertExists()
+    compose.onNodeWithTag("level_ERROR").performClick()
+    compose.onNodeWithText("E 1", useUnmergedTree = true).assertExists()
+
+    compose.onNodeWithTag("session_selector").performClick()
+    compose.onNodeWithTag("session_previous").performClick()
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("W 1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText("E 2", useUnmergedTree = true).assertExists()
+  }
+
+  @Test
+  fun controlsExposeAccessibleActionsAndFollowState() {
+    val source = FakeSource()
+    source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("Started").fetchSemanticsNodes().isNotEmpty()
+    }
+    listOf(
+        "Go back",
+        "Refresh logs",
+        "Copy visible logs",
+        "Share visible logs",
+        "Clear logs in selected session",
+        "Show logs",
+        "Show capture status",
+        "Select log session, current session",
+        "Filter Warning and above, 1 warning entry",
+        "Follow new logs and scroll to the newest entry",
+      )
+      .forEach { compose.onNodeWithContentDescription(it).assertExists() }
+    compose
+      .onNodeWithTag("follow_logs")
+      .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "On"))
+    compose.onNodeWithTag("follow_logs").performClick()
+    compose
+      .onNodeWithTag("follow_logs")
+      .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Off"))
+  }
+
   private class FakeSource : LogSource {
     var records: List<LogEntry> = emptyList()
+    var sessionList = listOf(LogSession("current", 0, true))
+    val recordsBySession = mutableMapOf<String, List<LogEntry>>()
     private val events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     override val changes: Flow<Unit> = events
     val capabilityState = MutableStateFlow(LogCapabilities(true, false, true, true))
     override val capabilities: StateFlow<LogCapabilities> = capabilityState
     override val health: StateFlow<LogHealth> = MutableStateFlow(LogHealth(installed = true))
 
-    override suspend fun sessions() = listOf(LogSession("current", 0, true))
+    override suspend fun sessions() = sessionList
 
-    override suspend fun entries(sessionId: String) = records
+    override suspend fun entries(sessionId: String) = recordsBySession[sessionId] ?: records
 
     override suspend fun clear(sessionId: String) {
       records = emptyList()
