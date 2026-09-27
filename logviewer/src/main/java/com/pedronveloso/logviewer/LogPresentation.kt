@@ -27,7 +27,7 @@ fun LogEntry.matches(filter: LogFilter): Boolean =
       message.contains(filter.query, ignoreCase = true) ||
       tag?.contains(filter.query, ignoreCase = true) == true)
 
-/** Render only the selected entries, without appending a throwable a second time. */
+/** Render only the selected entries, appending a separately stored throwable once. */
 fun formatLogEntries(entries: List<LogEntry>): String {
   val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
   return entries.joinToString("\n\n") { entry ->
@@ -41,7 +41,23 @@ fun formatLogEntries(entries: List<LogEntry>): String {
       }
       append('\n')
       append(entry.message)
+      entry.throwableStackTrace?.let {
+        if (entry.message.isNotEmpty()) append('\n')
+        append(it)
+      }
     }
+  }
+}
+
+internal fun formatElapsedTime(previousMillis: Long?, currentMillis: Long): String? {
+  if (previousMillis == null || currentMillis < previousMillis) return null
+  val elapsed = currentMillis - previousMillis
+  return when {
+    elapsed < 1_000 -> "+$elapsed ms"
+    elapsed < 60_000 -> "+${elapsed / 1_000}s"
+    elapsed < 3_600_000 -> "+${elapsed / 60_000}m"
+    elapsed < 86_400_000 -> "+${elapsed / 3_600_000}h"
+    else -> "+${elapsed / 86_400_000}d"
   }
 }
 

@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.4.1")
+    debugImplementation("io.github.pedronveloso:logviewer:0.5.0")
 }
 ```
 
@@ -70,9 +70,10 @@ LogViewer(source = capture, onBack = onBack)
 `persistAcrossCrashes` defaults to `false`. Memory keeps the newest 1,000 entries by default.
 Persistent capture keeps at most two 1 MiB segments for each of the three newest process sessions
 under the app's private, non-backed-up storage. It syncs every accepted entry before Timber
-returns, so it adds disk latency to the logging call. Entries are limited to 12,000 message
-characters and marked when truncated. An incomplete tail record after a crash is discarded while
-earlier complete records remain readable. Disk failure leaves the in-memory store operating and
+returns, so it adds disk latency to the logging call. Messages and separate throwable traces are
+each limited to 12,000 characters and marked when truncated. An incomplete tail record after a
+crash is discarded while earlier complete records remain readable. Disk failure leaves the
+in-memory store operating and
 appears on Status. Persistence covers process crashes; it does not claim durability against
 device power loss.
 
@@ -91,7 +92,9 @@ Implement `LogSource` to adapt an app's in-memory or persistent Timber store. Su
 session and entry snapshots, `capabilities` and `health` state flows, and a `changes` flow if new
 entries should appear automatically. Return `null` for `changes` if the viewer should offer only
 manual refresh. `LogEntry.id` must be unique and increasing within each session so list rows and
-Follow remain stable. Set `canClear = false` for a read-only source.
+Follow remain stable. Set `canClear = false` for a read-only source. Set
+`throwableStackTrace` when a source has separate exception details; in that case, keep the trace
+out of `message`. Existing sources that include traces in `message` continue to display as supplied.
 
 Status cannot inspect arbitrary Timber trees. For an external source it reports persistence and
 redaction as claims made by the host app and displays any read or write errors the adapter exposes.

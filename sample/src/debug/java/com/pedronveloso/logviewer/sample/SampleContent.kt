@@ -49,7 +49,12 @@ fun SampleContent(modifier: Modifier = Modifier) {
         val batch = ++count
         Timber.tag("Sample").d("Generated message %d token=sample-secret", batch)
         Timber.tag("Sample").w("Generated warning %d: slow response", batch)
-        Timber.tag("Sample").e("Generated error %d: request failed", batch)
+        Timber.tag("Sample\$generateLogs")
+          .e(
+            IllegalStateException("Request $batch failed"),
+            "Generated error %d: request failed",
+            batch,
+          )
       },
       onCrash = {
         Timber.tag("Sample").w("About to crash; this entry should survive restart")

@@ -96,6 +96,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
         entry.priority,
         field(entry.tag.orEmpty()),
         field(entry.message),
+        field(entry.throwableStackTrace.orEmpty()),
       )
       .joinToString("\t")
       .toByteArray(StandardCharsets.UTF_8)
@@ -103,7 +104,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
 
   private fun decode(payload: ByteArray, sessionId: String): LogEntry {
     val parts = String(payload, StandardCharsets.UTF_8).split('\t')
-    require(parts.size == 5)
+    require(parts.size == 5 || parts.size == 6)
     fun field(value: String) = String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8)
     val tag = field(parts[3]).ifBlank { null }
     return LogEntry(
@@ -113,6 +114,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
       parts[2].toInt(),
       tag,
       field(parts[4]),
+      parts.getOrNull(5)?.let(::field)?.ifBlank { null },
     )
   }
 

@@ -1,6 +1,8 @@
 package com.pedronveloso.logviewer
 
 import android.content.Context
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.UUID
@@ -55,7 +57,7 @@ class TimberLogCapture(
   private val tree =
     object : Timber.DebugTree() {
       override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-        append(priority, tag, message)
+        append(priority, tag, message, t)
       }
     }
 
@@ -117,19 +119,31 @@ class TimberLogCapture(
       revision.value += 1
     }
 
-  private fun append(priority: Int, tag: String?, message: String) {
+  private fun append(priority: Int, tag: String?, message: String, throwable: Throwable?) {
     fun safeRedact(value: String): String = runCatching {
       (redact?.invoke(value) ?: value)
     }
       .getOrDefault("<redaction failed>")
-    val redactedMessage = safeRedact(message)
-    val entryMessage =
-      if (redactedMessage.length > MAX_MESSAGE_CHARS)
-        redactedMessage.take(MAX_MESSAGE_CHARS) + "\n<truncated>"
-      else redactedMessage
+    fun truncate(value: String): String =
+      if (value.length > MAX_MESSAGE_CHARS) value.take(MAX_MESSAGE_CHARS) + "\n<truncated>"
+      else value
+    val stackTrace = throwable?.let {
+      StringWriter(256).also { writer -> it.printStackTrace(PrintWriter(writer)) }.toString()
+    }
+    val separateTrace = stackTrace?.takeIf { message == it || message.endsWith("\n$it") }
+    val plainMessage =
+      when {
+        separateTrace == null -> message
+        message == separateTrace -> ""
+        message.endsWith("\n$separateTrace") -> message.removeSuffix("\n$separateTrace")
+        else -> message
+      }
+    val entryMessage = truncate(safeRedact(plainMessage))
     val entryTag = tag?.let(::safeRedact)?.take(MAX_TAG_CHARS)
+    val entryStackTrace = separateTrace?.let(::safeRedact)?.trimEnd()?.let(::truncate)
     synchronized(lock) {
-      val entry = LogEntry(nextId++, sessionId, clock(), priority, entryTag, entryMessage)
+      val entry =
+        LogEntry(nextId++, sessionId, clock(), priority, entryTag, entryMessage, entryStackTrace)
       if (memory.size == capacity) memory.removeFirst()
       memory.addLast(entry)
       if (diskWritable) {

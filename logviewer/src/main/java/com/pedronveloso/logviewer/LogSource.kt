@@ -3,7 +3,7 @@ package com.pedronveloso.logviewer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-/** One rendered Timber emission. [message] already includes Timber's throwable stack trace. */
+/** One log emission. [throwableStackTrace] is optional; [message] excludes it when supplied. */
 data class LogEntry(
   val id: Long,
   val sessionId: String,
@@ -11,6 +11,7 @@ data class LogEntry(
   val priority: Int,
   val tag: String?,
   val message: String,
+  val throwableStackTrace: String? = null,
 )
 
 data class LogSession(

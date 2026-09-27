@@ -6,7 +6,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.concurrent.CountDownLatch
+import java.util.zip.CRC32
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -75,7 +78,9 @@ class TimberLogCaptureTest {
       val stored = restarted.entries(previous.id).single()
       assertThat(stored.tag).isEqualTo("<redacted>")
       assertThat(stored.message).contains("https://example.com/<redacted>")
-      assertThat(stored.message).contains("password=<redacted>")
+      assertThat(stored.message).doesNotContain("password=hunter2")
+      assertThat(stored.throwableStackTrace).contains("password=<redacted>")
+      assertThat(stored.throwableStackTrace).doesNotContain("hunter2")
       val exported = formatLogEntries(listOf(stored))
       assertThat(exported).doesNotContain("person@example.com")
       assertThat(exported).doesNotContain("secret123")
@@ -127,9 +132,38 @@ class TimberLogCaptureTest {
     assertThat(restored.tag).isEqualTo("CrashTest")
     assertThat(restored.priority).isEqualTo(Log.ERROR)
     assertThat(restored.message).contains("Before crash")
-    assertThat(restored.message).contains("java.lang.IllegalStateException: boom")
+    assertThat(restored.message).doesNotContain("java.lang.IllegalStateException: boom")
+    assertThat(restored.throwableStackTrace).contains("java.lang.IllegalStateException: boom")
     assertThat(formatLogEntries(listOf(restored)).split("java.lang.IllegalStateException: boom"))
       .hasSize(2)
+  }
+
+  @Test
+  fun `legacy disk records retain combined messages`() = runBlocking {
+    val capture = TimberLogCapture(context, persistAcrossCrashes = true, clock = { 5000L })
+    val sessionId = capture.sessions().first().id
+    val message = "Before crash\njava.lang.IllegalStateException: boom"
+    val encode = Base64.getEncoder()
+    val payload =
+      listOf(
+          "0",
+          "5000",
+          Log.ERROR.toString(),
+          encode.encodeToString("Legacy".toByteArray(StandardCharsets.UTF_8)),
+          encode.encodeToString(message.toByteArray(StandardCharsets.UTF_8)),
+        )
+        .joinToString("\t")
+        .toByteArray(StandardCharsets.UTF_8)
+    RandomAccessFile(File(directory, "s-$sessionId.0"), "rw").use {
+      it.writeInt(payload.size)
+      it.writeInt(CRC32().apply { update(payload) }.value.toInt())
+      it.write(payload)
+    }
+
+    val restored = capture.entries(sessionId).single()
+    assertThat(restored.message).isEqualTo(message)
+    assertThat(restored.throwableStackTrace).isNull()
+    assertThat(formatLogEntries(listOf(restored))).contains(message)
   }
 
   @Test

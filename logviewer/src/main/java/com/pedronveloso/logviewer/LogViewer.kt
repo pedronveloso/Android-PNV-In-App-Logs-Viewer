@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignBottom
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +41,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
@@ -70,9 +74,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -107,6 +115,7 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
   var follow by remember(source) { mutableStateOf(true) }
   var refresh by remember { mutableIntStateOf(0) }
   var error by remember { mutableStateOf<String?>(null) }
+  var selectedEntry by remember(source) { mutableStateOf<LogEntry?>(null) }
   val listState = rememberLazyListState()
   val isDragged by listState.interactionSource.collectIsDraggedAsState()
   val filtered = remember(allEntries, filter) { allEntries.filter { it.matches(filter) } }
@@ -232,12 +241,30 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
               contentPadding = PaddingValues(12.dp),
               verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-              items(filtered, key = { "${it.sessionId}:${it.id}" }) { LogRow(it) }
+              itemsIndexed(filtered, key = { _, entry -> "${entry.sessionId}:${entry.id}" }) {
+                index,
+                entry ->
+                LogRow(
+                  entry = entry,
+                  previousTimestamp = filtered.getOrNull(index - 1)?.timestampMillis,
+                  onClick = { selectedEntry = entry },
+                )
+              }
             }
           }
         }
       }
     }
+  }
+  selectedEntry?.let { entry ->
+    LogDetailsSheet(
+      entry = entry,
+      onDismiss = { selectedEntry = null },
+      onFilterLikeThis = {
+        filter = filter.copy(query = entry.tag.orEmpty())
+        selectedEntry = null
+      },
+    )
   }
 }
 
@@ -395,7 +422,7 @@ private fun LogFilterRow(
   ) {
     Row(
       Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
       LogLevel.entries.forEach { level ->
         val count =
@@ -410,6 +437,8 @@ private fun LogFilterRow(
           label = {
             Text(
               if (count == null) level.shortLabel else "${level.shortLabel} ${cappedCount(count)}",
+              maxLines = 1,
+              softWrap = false,
               color =
                 if (level == LogLevel.WARN || level == LogLevel.ERROR) levelColor(level)
                 else Color.Unspecified,
@@ -451,18 +480,16 @@ private fun LogEmptyState(noEntries: Boolean) {
 }
 
 @Composable
-private fun LogRow(entry: LogEntry, initiallyExpanded: Boolean = false) {
-  var expanded by remember(entry.sessionId, entry.id) { mutableStateOf(initiallyExpanded) }
+private fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Unit) {
   val level = LogLevel.fromPriority(entry.priority)
   Column(
     Modifier.fillMaxWidth()
       .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
-      .clickable(onClickLabel = if (expanded) "Collapse log entry" else "Expand log entry") {
-        expanded = !expanded
-      }
+      .clickable(onClickLabel = "Show log details", onClick = onClick)
+      .testTag("log_entry_${entry.id}")
       .padding(10.dp)
   ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.Top) {
       Text(
         level.shortLabel,
         color = levelColor(level),
@@ -471,20 +498,98 @@ private fun LogRow(entry: LogEntry, initiallyExpanded: Boolean = false) {
       )
       Spacer(Modifier.width(8.dp))
       Text(
-        entry.tag.orEmpty(),
+        styledTag(
+          entry.tag.orEmpty(),
+          MaterialTheme.colorScheme.primary,
+          MaterialTheme.colorScheme.tertiary,
+        ),
         style = MaterialTheme.typography.labelMedium,
-        maxLines = 1,
+        maxLines = 2,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.weight(1f),
       )
-      Text(formatTime(entry.timestampMillis), style = MaterialTheme.typography.labelSmall)
+      if (entry.throwableStackTrace != null) {
+        Icon(
+          Icons.Outlined.ErrorOutline,
+          contentDescription = "Has exception details",
+          tint = levelColor(level),
+          modifier = Modifier.padding(horizontal = 4.dp).size(16.dp),
+        )
+      }
+      Column(horizontalAlignment = Alignment.End) {
+        Text(formatTime(entry.timestampMillis), style = MaterialTheme.typography.labelSmall)
+        formatElapsedTime(previousTimestamp, entry.timestampMillis)?.let {
+          Text(
+            it,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
     }
-    Text(
-      entry.message,
-      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-      maxLines = if (expanded) Int.MAX_VALUE else 6,
-      overflow = TextOverflow.Ellipsis,
-    )
+    if (entry.message.isNotEmpty()) {
+      Text(
+        entry.message,
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        maxLines = 6,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+internal fun styledTag(tag: String, classColor: Color, methodColor: Color): AnnotatedString {
+  val divider = tag.lastIndexOf('$')
+  if (divider <= 0 || divider == tag.lastIndex) return AnnotatedString(tag)
+  return buildAnnotatedString {
+    withStyle(SpanStyle(color = classColor)) { append(tag.substring(0, divider)) }
+    append('$')
+    withStyle(SpanStyle(color = methodColor)) { append(tag.substring(divider + 1)) }
+  }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LogDetailsSheet(entry: LogEntry, onDismiss: () -> Unit, onFilterLikeThis: () -> Unit) {
+  ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("log_details_sheet")) {
+    Column(
+      Modifier.fillMaxWidth()
+        .verticalScroll(rememberScrollState())
+        .padding(horizontal = 20.dp)
+        .padding(bottom = 24.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Text("Log details", style = MaterialTheme.typography.titleLarge)
+      Text(
+        styledTag(
+          entry.tag ?: "(no tag)",
+          MaterialTheme.colorScheme.primary,
+          MaterialTheme.colorScheme.tertiary,
+        ),
+        style = MaterialTheme.typography.titleMedium,
+      )
+      Text(
+        "${LogLevel.fromPriority(entry.priority).accessibilityName} · ${formatTime(entry.timestampMillis)}",
+        style = MaterialTheme.typography.labelMedium,
+      )
+      TextButton(
+        onClick = onFilterLikeThis,
+        enabled = !entry.tag.isNullOrBlank(),
+        modifier = Modifier.testTag("filter_logs_like_this"),
+      ) {
+        Text("Filter logs like this")
+      }
+      if (entry.message.isNotEmpty()) {
+        Text(
+          entry.message,
+          style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+        )
+      }
+      entry.throwableStackTrace?.let {
+        Text("Throwable", style = MaterialTheme.typography.titleSmall)
+        Text(it, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+      }
+    }
   }
 }
 
@@ -592,14 +697,17 @@ private fun WarningLogRowPreview() {
   LogViewerPreviewTheme {
     Box(Modifier.width(420.dp).padding(12.dp)) {
       LogRow(
-        LogEntry(
-          1,
-          "preview",
-          1_700_000_000_000L,
-          LogLevel.WARN.priority,
-          "Network",
-          "Slow response from the service",
-        )
+        entry =
+          LogEntry(
+            1,
+            "preview",
+            1_700_000_000_000L,
+            LogLevel.WARN.priority,
+            "Network",
+            "Slow response from the service",
+          ),
+        previousTimestamp = null,
+        onClick = {},
       )
     }
   }
@@ -607,7 +715,7 @@ private fun WarningLogRowPreview() {
 
 @PreviewLightDark
 @Composable
-private fun ExpandedErrorLogRowPreview() {
+private fun ErrorLogRowPreview() {
   LogViewerPreviewTheme {
     Box(Modifier.width(420.dp).padding(12.dp)) {
       LogRow(
@@ -617,10 +725,12 @@ private fun ExpandedErrorLogRowPreview() {
             "preview",
             1_700_000_000_000L,
             LogLevel.ERROR.priority,
-            "Network",
+            "Network\$request",
             "Request failed after three attempts.\nThe endpoint did not respond.\nCheck the connection and retry.",
+            "java.lang.IllegalStateException: Request failed\n    at Network.request(Network.kt:42)",
           ),
-        initiallyExpanded = true,
+        previousTimestamp = 1_699_999_990_000L,
+        onClick = {},
       )
     }
   }

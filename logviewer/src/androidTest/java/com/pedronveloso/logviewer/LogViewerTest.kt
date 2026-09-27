@@ -46,6 +46,54 @@ class LogViewerTest {
   }
 
   @Test
+  fun elapsedTimeFollowsVisibleEntries() {
+    val source = FakeSource()
+    source.records =
+      listOf(
+        LogEntry(0, "current", 0, Log.DEBUG, "Hidden", "First"),
+        LogEntry(1, "current", 10_100, Log.DEBUG, "Shown", "Second"),
+        LogEntry(2, "current", 11_100, Log.DEBUG, "Shown", "Third"),
+      )
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("+10s").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("log_search").performTextInput("Shown")
+    compose.onNodeWithText("+10s").assertDoesNotExist()
+    compose.onNodeWithText("+1s").assertExists()
+  }
+
+  @Test
+  fun detailsSheetShowsThrowableAndFiltersByTag() {
+    val source = FakeSource()
+    source.records =
+      listOf(
+        LogEntry(
+          0,
+          "current",
+          0,
+          Log.ERROR,
+          "MyClass\$someFunction",
+          "Failed",
+          "IllegalStateException: boom",
+        ),
+        LogEntry(1, "current", 1, Log.DEBUG, "Other", "Unrelated"),
+      )
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithContentDescription("Has exception details").assertExists()
+    compose.onNodeWithText("IllegalStateException: boom").assertDoesNotExist()
+    compose.onNodeWithTag("log_entry_0").performClick()
+    compose.onNodeWithTag("log_details_sheet").assertExists()
+    compose.onNodeWithText("IllegalStateException: boom").assertExists()
+    compose.onNodeWithTag("filter_logs_like_this").performClick()
+    compose.onNodeWithText("Unrelated").assertDoesNotExist()
+    compose.onNodeWithText("Failed").assertExists()
+  }
+
+  @Test
   fun statusIdentifiesExternalPersistenceAsDeclared() {
     val source = FakeSource()
     source.capabilityState.value = LogCapabilities(true, true, false, true)

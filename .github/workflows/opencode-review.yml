@@ -145,6 +145,4 @@ jobs:
             Treat log content as sensitive. Do not copy log payloads or fixture text into
             the review, and never commit secrets or signing credentials.
 
-            Suggest concrete, actionable improvements with file references.
-
             Post the resulting review on the pull request.
