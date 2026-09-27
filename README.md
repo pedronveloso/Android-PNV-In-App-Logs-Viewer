@@ -9,18 +9,20 @@ The repository has a `:logviewer` Android library and a `:sample` app. It uses A
 
 ## Include in a host app
 
-For local development, add this repository to the host's `settings.gradle.kts`:
-
-```kotlin
-includeBuild("../pnv-in-app-logs-viewer")
-```
-
-Use the library only in the debug variant by default:
+Use Maven Central (already included by default in most Android projects) and add the dependency
+only to the debug variant:
 
 ```kotlin
 dependencies {
-  debugImplementation("com.pedronveloso:logviewer:0.2.1")
+  debugImplementation("io.github.pedronveloso:logviewer:0.3.0")
 }
+```
+
+For local development against this repository instead of the published artifact, add a composite
+build to the host's `settings.gradle.kts`:
+
+```kotlin
+includeBuild("../pnv-in-app-logs-viewer")
 ```
 
 Keep all references to the library in `src/debug/`. If production code needs to reach a debug
@@ -28,8 +30,8 @@ menu, use a small interface or variant-specific entry point with a no-op `src/re
 implementation. A release build then has no viewer classes, manifest provider, or viewer resources.
 Apps that deliberately want production access may use `implementation` instead.
 
-The library does not publish to Maven yet. A composite build substitutes the local `:logviewer`
-module for the coordinates above.
+The published Maven group is independent of the library's Kotlin package,
+`com.pedronveloso.logviewer`.
 
 ## Versioning
 
@@ -39,6 +41,36 @@ pre-1.0, bump MINOR for new features or breaking changes and PATCH for fixes, do
 tooling. From 1.0 onward, bump MAJOR for breaking API changes, MINOR for compatible features, and
 PATCH for fixes, documentation, or tooling.
 Use the highest applicable bump when a change set contains more than one kind of change.
+
+## Publish a release
+
+Only `:logviewer`'s release AAR is published to Maven Central. Uploading creates a deployment
+that waits for manual approval in Central Portal; it does not make the artifact public by itself.
+The project is licensed under [Apache 2.0](LICENSE).
+
+1. Confirm that your [Central Portal account](https://central.sonatype.com/publishing/namespaces)
+   can publish to the existing `io.github.pedronveloso` namespace. You do not need another domain.
+2. Create or reuse a [Portal user token](https://central.sonatype.org/publish/generate-portal-token/)
+   and a [GPG signing key](https://central.sonatype.org/publish/requirements/gpg/) whose public key
+   has been distributed to a key server. The token's username and password are distinct from your
+   Portal sign-in credentials.
+3. In this repository's GitHub **Settings → Secrets and variables → Actions**, add repository
+   secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_IN_MEMORY_KEY`, and
+   `SIGNING_IN_MEMORY_KEY_PASSWORD`. Use the token's username and password. Set the signing key to
+   the complete, ASCII-armored private key from `gpg --export-secret-keys --armor <key-id>` and
+   the signing password to that key's passphrase. If the key has no passphrase, the password secret
+   may be omitted. Keep the exported private key out of logs and version control.
+4. Bump `:logviewer`'s version and the dependency example above using the [versioning policy](#versioning).
+   Run the checks in `AGENTS.md`, inspect the release publication, and review the changes.
+5. Commit and push the reviewed changes, then create and push a tag matching the version, such as
+   `git tag v0.3.0` and `git push origin v0.3.0`. The tag must point to the reviewed commit.
+6. On GitHub, open **Actions → Publish to Maven Central → Run workflow**, enter `0.3.0`, and run
+   it. The workflow checks out `v0.3.0`, verifies the library version, reruns the release checks,
+   signs the artifacts, and uploads them for manual approval. A failed run must be fixed and
+   retagged with a new version if that version was already published; Central versions are immutable.
+7. Open [Central Portal deployments](https://central.sonatype.com/publishing/deployments), inspect
+   the deployment and validation results, and click **Publish**. Once it is available, confirm a
+   fresh Android project resolves `io.github.pedronveloso:logviewer:0.3.0` from `mavenCentral()`.
 
 ## Capture with the library
 
