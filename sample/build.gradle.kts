@@ -25,7 +25,12 @@ dependencies {
   lintChecks(libs.composeLints)
   implementation(platform(libs.composeBom))
   implementation(libs.composeUi)
+  implementation(libs.composeUiToolingPreview)
   implementation(libs.composeMaterial3)
   implementation(libs.activityCompose)
+  implementation(libs.coreKtx)
   debugImplementation(project(":logviewer"))
+  debugImplementation(libs.composeUiTooling)
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }

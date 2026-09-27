@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,7 +31,6 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignBottom
-import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,12 +41,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,12 +73,14 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -134,7 +141,7 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
         }
     }
     reload()
-    source.changes?.sample(250)?.collect { reload() }
+    source.changes?.sample(250.milliseconds)?.collect { reload() }
   }
 
   LaunchedEffect(listState, isDragged) {
@@ -153,60 +160,28 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
   Scaffold(
     modifier = modifier,
     topBar = {
-      TopAppBar(
-        title = { Text("Logs") },
-        navigationIcon = {
-          IconButton(
-            onClick = onBack,
-            modifier = Modifier.semantics { contentDescription = "Go back" },
-          ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+      LogViewerTopBar(
+        showActions = tab == 0,
+        canClear = capabilities.canClear && selectedSession != null,
+        onBack = onBack,
+        onRefresh = { refresh++ },
+        onCopy = {
+          scope.launch {
+            clipboard.setClipEntry(
+              ClipEntry(ClipData.newPlainText("logs", formatLogEntries(filtered)))
+            )
           }
         },
-        actions = {
-          if (tab == 0) {
-            IconButton(
-              onClick = { refresh++ },
-              modifier =
-                Modifier.testTag("refresh_logs").semantics { contentDescription = "Refresh logs" },
-            ) {
-              Icon(Icons.Default.Refresh, contentDescription = null)
-            }
-            IconButton(
-              onClick = {
-                scope.launch {
-                  clipboard.setClipEntry(
-                    ClipEntry(ClipData.newPlainText("logs", formatLogEntries(filtered)))
-                  )
-                }
-              },
-              modifier = Modifier.semantics { contentDescription = "Copy visible logs" },
-            ) {
-              Icon(Icons.Default.ContentCopy, contentDescription = null)
-            }
-            IconButton(
-              onClick = {
-                runCatching { shareLogs(context, formatLogEntries(filtered)) }
-                  .onFailure { error = it.message ?: "Could not share logs" }
-              },
-              modifier = Modifier.semantics { contentDescription = "Share visible logs" },
-            ) {
-              Icon(Icons.Default.Share, contentDescription = null)
-            }
-            if (capabilities.canClear && selectedSession != null) {
-              IconButton(
-                onClick = {
-                  scope.launch {
-                    runCatching { source.clear(selectedSession!!) }
-                      .onSuccess { refresh++ }
-                      .onFailure { error = it.message ?: "Could not clear logs" }
-                  }
-                },
-                modifier =
-                  Modifier.semantics { contentDescription = "Clear logs in selected session" },
-              ) {
-                Icon(Icons.Default.DeleteSweep, contentDescription = null)
-              }
+        onShare = {
+          runCatching { shareLogs(context, formatLogEntries(filtered)) }
+            .onFailure { error = it.message ?: "Could not share logs" }
+        },
+        onClear = {
+          selectedSession?.let { sessionId ->
+            scope.launch {
+              runCatching { source.clear(sessionId) }
+                .onSuccess { refresh++ }
+                .onFailure { error = it.message ?: "Could not clear logs" }
             }
           }
         },
@@ -214,21 +189,7 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
     },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
-      PrimaryTabRow(selectedTabIndex = tab) {
-        Tab(
-          selected = tab == 0,
-          onClick = { tab = 0 },
-          text = { Text("Logs") },
-          modifier = Modifier.testTag("logs_tab").semantics { contentDescription = "Show logs" },
-        )
-        Tab(
-          selected = tab == 1,
-          onClick = { tab = 1 },
-          text = { Text("Status") },
-          modifier =
-            Modifier.testTag("status_tab").semantics { contentDescription = "Show capture status" },
-        )
-      }
+      LogViewerTabs(selectedTab = tab, onSelectTab = { tab = it })
       error?.let {
         Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp))
       }
@@ -236,124 +197,34 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
         StatusContent(effectiveCapabilities, health, Modifier.fillMaxSize())
       } else {
         Column(Modifier.fillMaxSize()) {
-          var sessionMenu by remember { mutableStateOf(false) }
-          Box(Modifier.padding(start = 16.dp, top = 8.dp)) {
-            val selected = sessions.firstOrNull { it.id == selectedSession }
-            TextButton(
-              onClick = { sessionMenu = true },
-              modifier =
-                Modifier.testTag("session_selector").semantics {
-                  contentDescription =
-                    when {
-                      selected == null -> "Select log session"
-                      selected.isCurrent -> "Select log session, current session"
-                      else ->
-                        "Select log session, previous session from ${formatSessionDate(selected.startedAtMillis)}"
-                    }
-                },
-            ) {
-              Text(
-                if (selected?.isCurrent == true) "Current session ▾"
-                else
-                  "Previous session: ${selected?.startedAtMillis?.let(::formatSessionDate).orEmpty()} ▾"
-              )
-            }
-            DropdownMenu(expanded = sessionMenu, onDismissRequest = { sessionMenu = false }) {
-              sessions.forEach { session ->
-                DropdownMenuItem(
-                  modifier =
-                    Modifier.testTag("session_${session.id}").semantics {
-                      contentDescription =
-                        if (session.isCurrent) "Select current session"
-                        else "Select session from ${formatSessionDate(session.startedAtMillis)}"
-                    },
-                  text = {
-                    Text(
-                      if (session.isCurrent) "Current session"
-                      else formatSessionDate(session.startedAtMillis)
-                    )
-                  },
-                  onClick = {
-                    selectedSession = session.id
-                    sessionMenu = false
-                    follow = session.isCurrent
-                  },
-                )
-              }
-            }
-          }
-          OutlinedTextField(
-            value = filter.query,
-            onValueChange = { filter = filter.copy(query = it) },
-            label = { Text("Filter by tag or message") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("log_search"),
+          SessionSelector(
+            sessions = sessions,
+            selectedSessionId = selectedSession,
+            onSelectSession = {
+              selectedSession = it.id
+              follow = it.isCurrent
+            },
           )
-          Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-          ) {
-            Row(
-              Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-              LogLevel.entries.forEach { level ->
-                val count =
-                  when (level) {
-                    LogLevel.WARN -> warningCount
-                    LogLevel.ERROR -> errorCount
-                    else -> null
-                  }
-                FilterChip(
-                  selected = filter.minimumLevel == level,
-                  onClick = { filter = filter.copy(minimumLevel = level) },
-                  label = {
-                    Text(
-                      if (count == null) level.shortLabel
-                      else "${level.shortLabel} ${cappedCount(count)}",
-                      color =
-                        if (level == LogLevel.WARN || level == LogLevel.ERROR) levelColor(level)
-                        else Color.Unspecified,
-                    )
-                  },
-                  modifier =
-                    Modifier.testTag("level_${level.name}").semantics {
-                      contentDescription =
-                        "Filter ${level.accessibilityName} and above" +
-                          if (count == null) ""
-                          else
-                            ", ${cappedCount(count)} ${level.accessibilityName.lowercase()} ${if (count == 1) "entry" else "entries"}"
-                    },
-                )
-              }
-            }
-            FilterChip(
-              selected = follow,
-              onClick = { follow = !follow },
-              enabled = canFollow,
-              label = { Text("Follow") },
-              leadingIcon = { Icon(Icons.Default.VerticalAlignBottom, contentDescription = null) },
-              modifier =
-                Modifier.padding(start = 8.dp).testTag("follow_logs").semantics {
-                  contentDescription = "Follow new logs and scroll to the newest entry"
-                  stateDescription =
-                    if (!canFollow) "Unavailable for this session or log source"
-                    else if (follow) "On" else "Off"
-                },
-            )
-          }
+          LogSearchField(
+            query = filter.query,
+            onQueryChange = { filter = filter.copy(query = it) },
+          )
+          LogFilterRow(
+            selectedLevel = filter.minimumLevel,
+            warningCount = warningCount,
+            errorCount = errorCount,
+            follow = follow,
+            canFollow = canFollow,
+            onSelectLevel = { filter = filter.copy(minimumLevel = it) },
+            onFollowChange = { follow = it },
+          )
           Text(
             "${filtered.size} of ${allEntries.size} entries",
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
           )
           if (filtered.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-              Text(
-                if (allEntries.isEmpty()) "No log entries captured yet."
-                else "No entries match this filter."
-              )
-            }
+            LogEmptyState(noEntries = allEntries.isEmpty())
           } else {
             LazyColumn(
               state = listState,
@@ -370,9 +241,218 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
   }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LogRow(entry: LogEntry) {
-  var expanded by remember(entry.sessionId, entry.id) { mutableStateOf(false) }
+private fun LogViewerTopBar(
+  showActions: Boolean,
+  canClear: Boolean,
+  onBack: () -> Unit,
+  onRefresh: () -> Unit,
+  onCopy: () -> Unit,
+  onShare: () -> Unit,
+  onClear: () -> Unit,
+) {
+  TopAppBar(
+    title = { Text("Logs") },
+    navigationIcon = {
+      IconButton(
+        onClick = onBack,
+        modifier = Modifier.semantics { contentDescription = "Go back" },
+      ) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+      }
+    },
+    actions = {
+      if (showActions) {
+        IconButton(
+          onClick = onRefresh,
+          modifier =
+            Modifier.testTag("refresh_logs").semantics { contentDescription = "Refresh logs" },
+        ) {
+          Icon(Icons.Default.Refresh, contentDescription = null)
+        }
+        IconButton(
+          onClick = onCopy,
+          modifier = Modifier.semantics { contentDescription = "Copy visible logs" },
+        ) {
+          Icon(Icons.Default.ContentCopy, contentDescription = null)
+        }
+        IconButton(
+          onClick = onShare,
+          modifier = Modifier.semantics { contentDescription = "Share visible logs" },
+        ) {
+          Icon(Icons.Default.Share, contentDescription = null)
+        }
+        if (canClear) {
+          IconButton(
+            onClick = onClear,
+            modifier = Modifier.semantics { contentDescription = "Clear logs in selected session" },
+          ) {
+            Icon(Icons.Default.DeleteSweep, contentDescription = null)
+          }
+        }
+      }
+    },
+  )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LogViewerTabs(selectedTab: Int, onSelectTab: (Int) -> Unit) {
+  PrimaryTabRow(selectedTabIndex = selectedTab) {
+    Tab(
+      selected = selectedTab == 0,
+      onClick = { onSelectTab(0) },
+      text = { Text("Logs") },
+      modifier = Modifier.testTag("logs_tab").semantics { contentDescription = "Show logs" },
+    )
+    Tab(
+      selected = selectedTab == 1,
+      onClick = { onSelectTab(1) },
+      text = { Text("Status") },
+      modifier =
+        Modifier.testTag("status_tab").semantics { contentDescription = "Show capture status" },
+    )
+  }
+}
+
+@Composable
+private fun SessionSelector(
+  sessions: List<LogSession>,
+  selectedSessionId: String?,
+  onSelectSession: (LogSession) -> Unit,
+) {
+  var sessionMenu by remember { mutableStateOf(false) }
+  Box(Modifier.padding(start = 16.dp, top = 8.dp)) {
+    val selected = sessions.firstOrNull { it.id == selectedSessionId }
+    TextButton(
+      onClick = { sessionMenu = true },
+      modifier =
+        Modifier.testTag("session_selector").semantics {
+          contentDescription =
+            when {
+              selected == null -> "Select log session"
+              selected.isCurrent -> "Select log session, current session"
+              else ->
+                "Select log session, previous session from ${formatSessionDate(selected.startedAtMillis)}"
+            }
+        },
+    ) {
+      Text(
+        if (selected?.isCurrent == true) "Current session ▾"
+        else "Previous session: ${selected?.startedAtMillis?.let(::formatSessionDate).orEmpty()} ▾"
+      )
+    }
+    DropdownMenu(expanded = sessionMenu, onDismissRequest = { sessionMenu = false }) {
+      sessions.forEach { session ->
+        DropdownMenuItem(
+          modifier =
+            Modifier.testTag("session_${session.id}").semantics {
+              contentDescription =
+                if (session.isCurrent) "Select current session"
+                else "Select session from ${formatSessionDate(session.startedAtMillis)}"
+            },
+          text = {
+            Text(
+              if (session.isCurrent) "Current session"
+              else formatSessionDate(session.startedAtMillis)
+            )
+          },
+          onClick = {
+            onSelectSession(session)
+            sessionMenu = false
+          },
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun LogSearchField(query: String, onQueryChange: (String) -> Unit) {
+  OutlinedTextField(
+    value = query,
+    onValueChange = onQueryChange,
+    label = { Text("Filter by tag or message") },
+    singleLine = true,
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("log_search"),
+  )
+}
+
+@Composable
+private fun LogFilterRow(
+  selectedLevel: LogLevel,
+  warningCount: Int,
+  errorCount: Int,
+  follow: Boolean,
+  canFollow: Boolean,
+  onSelectLevel: (LogLevel) -> Unit,
+  onFollowChange: (Boolean) -> Unit,
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Row(
+      Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      LogLevel.entries.forEach { level ->
+        val count =
+          when (level) {
+            LogLevel.WARN -> warningCount
+            LogLevel.ERROR -> errorCount
+            else -> null
+          }
+        FilterChip(
+          selected = selectedLevel == level,
+          onClick = { onSelectLevel(level) },
+          label = {
+            Text(
+              if (count == null) level.shortLabel else "${level.shortLabel} ${cappedCount(count)}",
+              color =
+                if (level == LogLevel.WARN || level == LogLevel.ERROR) levelColor(level)
+                else Color.Unspecified,
+            )
+          },
+          modifier =
+            Modifier.testTag("level_${level.name}").semantics {
+              contentDescription =
+                "Filter ${level.accessibilityName} and above" +
+                  if (count == null) ""
+                  else
+                    ", ${cappedCount(count)} ${level.accessibilityName.lowercase()} ${if (count == 1) "entry" else "entries"}"
+            },
+        )
+      }
+    }
+    FilterChip(
+      selected = follow,
+      onClick = { onFollowChange(!follow) },
+      enabled = canFollow,
+      label = { Text("Follow") },
+      leadingIcon = { Icon(Icons.Default.VerticalAlignBottom, contentDescription = null) },
+      modifier =
+        Modifier.padding(start = 8.dp).testTag("follow_logs").semantics {
+          contentDescription = "Follow new logs and scroll to the newest entry"
+          stateDescription =
+            if (!canFollow) "Unavailable for this session or log source"
+            else if (follow) "On" else "Off"
+        },
+    )
+  }
+}
+
+@Composable
+private fun LogEmptyState(noEntries: Boolean) {
+  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Text(if (noEntries) "No log entries captured yet." else "No entries match this filter.")
+  }
+}
+
+@Composable
+private fun LogRow(entry: LogEntry, initiallyExpanded: Boolean = false) {
+  var expanded by remember(entry.sessionId, entry.id) { mutableStateOf(initiallyExpanded) }
   val level = LogLevel.fromPriority(entry.priority)
   Column(
     Modifier.fillMaxWidth()
@@ -409,6 +489,7 @@ private fun LogRow(entry: LogEntry) {
 }
 
 @Composable
+@ReadOnlyComposable
 private fun levelColor(level: LogLevel): Color =
   when (level) {
     LogLevel.VERBOSE,
@@ -429,53 +510,137 @@ private val LogLevel.accessibilityName: String
 
 private fun cappedCount(count: Int): String = if (count > 99) "99+" else count.toString()
 
+private fun formatTime(timestamp: Long) =
+  SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(timestamp))
+
 @Composable
-private fun StatusContent(
-  capabilities: LogCapabilities,
-  health: LogHealth,
-  modifier: Modifier = Modifier,
-) {
-  LazyColumn(
-    modifier,
-    contentPadding = PaddingValues(16.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
+private fun LogViewerPreviewTheme(content: @Composable () -> Unit) {
+  MaterialTheme(
+    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
   ) {
-    item {
-      Text(
-        if (capabilities.isLibraryCapture) "Library capture" else "App-provided source",
-        style = MaterialTheme.typography.titleMedium,
+    Surface(color = MaterialTheme.colorScheme.background) { content() }
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun LogViewerTopBarPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp)) {
+      LogViewerTopBar(
+        showActions = true,
+        canClear = true,
+        onBack = {},
+        onRefresh = {},
+        onCopy = {},
+        onShare = {},
+        onClear = {},
       )
-    }
-    items(statusMessages(capabilities, health)) { message ->
-      Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-          Text(
-            message.title,
-            color =
-              if (message.isProblem) MaterialTheme.colorScheme.error
-              else MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleSmall,
-          )
-          Text(message.detail, style = MaterialTheme.typography.bodyMedium)
-        }
-      }
-    }
-    health.lastDiskWriteMillis?.let { last ->
-      item {
-        Text(
-          "Last disk write: ${formatSessionDate(last)}",
-          style = MaterialTheme.typography.bodySmall,
-        )
-      }
     }
   }
 }
 
-private fun formatTime(timestamp: Long) =
-  SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(timestamp))
+@PreviewLightDark
+@Composable
+private fun LogViewerTabsPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp)) { LogViewerTabs(selectedTab = 0, onSelectTab = {}) }
+  }
+}
 
-private fun formatSessionDate(timestamp: Long) =
-  SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestamp))
+@PreviewLightDark
+@Composable
+private fun SessionSelectorPreview() {
+  LogViewerPreviewTheme {
+    SessionSelector(
+      sessions = listOf(LogSession("current", 1_700_000_000_000L, true)),
+      selectedSessionId = "current",
+      onSelectSession = {},
+    )
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun LogSearchFieldPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp)) { LogSearchField(query = "network", onQueryChange = {}) }
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun LogFilterRowPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp)) {
+      LogFilterRow(
+        selectedLevel = LogLevel.WARN,
+        warningCount = 12,
+        errorCount = 3,
+        follow = true,
+        canFollow = true,
+        onSelectLevel = {},
+        onFollowChange = {},
+      )
+    }
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun WarningLogRowPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp).padding(12.dp)) {
+      LogRow(
+        LogEntry(
+          1,
+          "preview",
+          1_700_000_000_000L,
+          LogLevel.WARN.priority,
+          "Network",
+          "Slow response from the service",
+        )
+      )
+    }
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun ExpandedErrorLogRowPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp).padding(12.dp)) {
+      LogRow(
+        entry =
+          LogEntry(
+            2,
+            "preview",
+            1_700_000_000_000L,
+            LogLevel.ERROR.priority,
+            "Network",
+            "Request failed after three attempts.\nThe endpoint did not respond.\nCheck the connection and retry.",
+          ),
+        initiallyExpanded = true,
+      )
+    }
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun NoEntriesPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp).height(180.dp)) { LogEmptyState(noEntries = true) }
+  }
+}
+
+@PreviewLightDark
+@Composable
+private fun NoMatchingEntriesPreview() {
+  LogViewerPreviewTheme {
+    Box(Modifier.width(420.dp).height(180.dp)) { LogEmptyState(noEntries = false) }
+  }
+}
 
 private fun shareLogs(context: Context, text: String) {
   val directory = File(context.cacheDir, "pnv-logviewer-exports")

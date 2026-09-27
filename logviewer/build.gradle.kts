@@ -81,6 +81,7 @@ dependencies {
   api(libs.coroutinesAndroid)
   api(platform(libs.composeBom))
   api(libs.composeUi)
+  implementation(libs.composeUiToolingPreview)
   implementation(libs.composeMaterial3)
   implementation(libs.composeIcons)
   implementation(libs.activityCompose)
@@ -95,4 +96,5 @@ dependencies {
   androidTestImplementation(libs.androidxRunner)
   androidTestImplementation(libs.espressoCore)
   debugImplementation(libs.composeUiTestManifest)
+  debugImplementation(libs.composeUiTooling)
 }

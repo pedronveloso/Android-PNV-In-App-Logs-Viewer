@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -99,8 +100,10 @@ private fun StatusCard(message: StatusMessage) {
 
 @Composable
 private fun StatusPreviewTheme(content: @Composable () -> Unit) {
-  MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-    content()
+  MaterialTheme(
+    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+  ) {
+    Surface(color = MaterialTheme.colorScheme.background) { content() }
   }
 }
 
@@ -134,7 +137,12 @@ private fun FailureStatusPreview() {
   StatusPreviewTheme {
     StatusContent(
       capabilities = LogCapabilities(true, true, true, true, isLibraryCapture = true),
-      health = LogHealth(installed = true, readError = "Demo read failure", writeError = "Demo write failure"),
+      health =
+        LogHealth(
+          installed = true,
+          readError = "Demo read failure",
+          writeError = "Demo write failure",
+        ),
       modifier = Modifier.height(500.dp),
     )
   }

@@ -45,6 +45,9 @@ fun formatLogEntries(entries: List<LogEntry>): String {
   }
 }
 
+internal fun formatSessionDate(timestamp: Long): String =
+  SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestamp))
+
 data class StatusMessage(val title: String, val detail: String, val isProblem: Boolean)
 
 /** Pure status rules shared by the UI and tests. */

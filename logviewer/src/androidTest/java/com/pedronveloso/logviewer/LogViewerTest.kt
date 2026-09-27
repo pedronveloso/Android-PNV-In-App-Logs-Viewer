@@ -60,6 +60,24 @@ class LogViewerTest {
   }
 
   @Test
+  fun statusCardsExposeHealthyAndActionNeededStates() {
+    compose.setContent {
+      MaterialTheme {
+        StatusContent(
+          LogCapabilities(true, true, false, true, isLibraryCapture = true),
+          LogHealth(installed = true),
+        )
+      }
+    }
+    compose
+      .onNodeWithText("Crash persistence configured")
+      .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Healthy"))
+    compose
+      .onNodeWithText("Live updates unavailable")
+      .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Action needed"))
+  }
+
+  @Test
   fun followPausesWhenUserScrollsAwayFromNewEntries() {
     val source = FakeSource()
     source.records =
