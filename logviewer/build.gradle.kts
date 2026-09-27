@@ -10,7 +10,7 @@ plugins {
 
 group = "io.github.pedronveloso"
 
-version = "0.5.0"
+version = "0.5.1"
 
 android {
   namespace = "com.pedronveloso.logviewer"

@@ -46,6 +46,27 @@ class LogViewerTest {
   }
 
   @Test
+  fun clearSearchButtonAppearsOnlyForTextAndRestoresEntries() {
+    val source = FakeSource()
+    source.records =
+      listOf(
+        LogEntry(0, "current", 0, Log.DEBUG, "Worker", "Started"),
+        LogEntry(1, "current", 1, Log.ERROR, "Network", "Request failed"),
+      )
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.waitUntil(3_000) {
+      compose.onAllNodesWithText("Request failed").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("clear_log_search").assertDoesNotExist()
+    compose.onNodeWithTag("log_search").performTextInput("network")
+    compose.onNodeWithContentDescription("Clear filter text").assertExists()
+    compose.onNodeWithText("Started").assertDoesNotExist()
+    compose.onNodeWithTag("clear_log_search").performClick()
+    compose.onNodeWithTag("clear_log_search").assertDoesNotExist()
+    compose.onNodeWithText("Started").assertExists()
+  }
+
+  @Test
   fun elapsedTimeFollowsVisibleEntries() {
     val source = FakeSource()
     source.records =

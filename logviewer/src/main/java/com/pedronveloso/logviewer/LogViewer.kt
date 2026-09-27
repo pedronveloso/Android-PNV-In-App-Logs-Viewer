@@ -401,6 +401,20 @@ private fun LogSearchField(query: String, onQueryChange: (String) -> Unit) {
     value = query,
     onValueChange = onQueryChange,
     label = { Text("Filter by tag or message") },
+    trailingIcon =
+      if (query.isNotEmpty()) {
+        {
+          TextButton(
+            onClick = { onQueryChange("") },
+            modifier =
+              Modifier.testTag("clear_log_search").semantics {
+                contentDescription = "Clear filter text"
+              },
+          ) {
+            Text("Clear")
+          }
+        }
+      } else null,
     singleLine = true,
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("log_search"),
   )
