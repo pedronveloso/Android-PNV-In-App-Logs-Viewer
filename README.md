@@ -19,7 +19,7 @@ Use the library only in the debug variant by default:
 
 ```kotlin
 dependencies {
-  debugImplementation("com.pedronveloso:logviewer:0.2.0")
+  debugImplementation("com.pedronveloso:logviewer:0.2.1")
 }
 ```
 
