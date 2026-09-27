@@ -19,7 +19,7 @@ Use the library only in the debug variant by default:
 
 ```kotlin
 dependencies {
-  debugImplementation("com.pedronveloso:logviewer:0.1.0")
+  debugImplementation("com.pedronveloso:logviewer:0.2.1")
 }
 ```
 
@@ -31,6 +31,15 @@ Apps that deliberately want production access may use `implementation` instead.
 The library does not publish to Maven yet. A composite build substitutes the local `:logviewer`
 module for the coordinates above.
 
+## Versioning
+
+The library uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every change set
+bumps the `:logviewer` version and keeps the dependency example above in sync. While the API is
+pre-1.0, bump MINOR for new features or breaking changes and PATCH for fixes, documentation, or
+tooling. From 1.0 onward, bump MAJOR for breaking API changes, MINOR for compatible features, and
+PATCH for fixes, documentation, or tooling.
+Use the highest applicable bump when a change set contains more than one kind of change.
+
 ## Capture with the library
 
 Create one capture in the host `Application` and explicitly install it. Keep it somewhere the
@@ -40,7 +49,7 @@ debug screen can access it, such as a dependency-injection singleton:
 val capture = TimberLogCapture(
   context = this,
   persistAcrossCrashes = true,
-  redact = { message -> sanitizeForDebugLogs(message) },
+  redact = StandardLogRedactor::redact,
 )
 capture.install()
 ```
@@ -60,11 +69,14 @@ earlier complete records remain readable. Disk failure leaves the in-memory stor
 appears on Status. Persistence covers process crashes; it does not claim durability against
 device power loss.
 
-The redaction function runs before either memory or disk storage. It should be fast and must not
-log through Timber, which would recurse. If it throws, the affected field is replaced with
-`<redaction failed>`. Logs and exports may contain sensitive app data; the host app owns its
-redaction policy. Sharing is a user action through an app-private temporary file and a non-exported
-`FileProvider`.
+`StandardLogRedactor` is an opt-in policy for URLs, common credential fields, Bearer and Basic
+values, email addresses, and UUIDs. Pass `StandardLogRedactor::redact` as shown above to use it;
+capture without a `redact` callback keeps text unchanged. The policy runs on messages, throwable
+stack traces, and tags before either memory or disk storage. Pattern matching cannot recognize
+every sensitive value, so avoid logging secrets and supply an app-specific callback if needed.
+The callback should be fast and must not log through Timber, which would recurse. If it throws,
+the affected field is replaced with `<redaction failed>`. Copy and share use captured entries;
+sharing is a user action through an app-private temporary file and a non-exported `FileProvider`.
 
 ## Use an existing store
 

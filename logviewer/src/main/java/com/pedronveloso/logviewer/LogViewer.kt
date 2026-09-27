@@ -102,15 +102,15 @@ fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier = Modifi
   LaunchedEffect(source, selectedSession, refresh) {
     suspend fun reload() {
       runCatching {
-          withContext(Dispatchers.IO) {
-            val available = source.sessions()
-            val chosen =
-              selectedSession?.takeIf { id -> available.any { it.id == id } }
-                ?: available.firstOrNull { it.isCurrent }?.id
-                ?: available.firstOrNull()?.id
-            Triple(available, chosen, chosen?.let { source.entries(it) }.orEmpty())
-          }
+        withContext(Dispatchers.IO) {
+          val available = source.sessions()
+          val chosen =
+            selectedSession?.takeIf { id -> available.any { it.id == id } }
+              ?: available.firstOrNull { it.isCurrent }?.id
+              ?: available.firstOrNull()?.id
+          Triple(available, chosen, chosen?.let { source.entries(it) }.orEmpty())
         }
+      }
         .onSuccess { (available, chosen, entries) ->
           sessions = available
           if (selectedSession != chosen) selectedSession = chosen

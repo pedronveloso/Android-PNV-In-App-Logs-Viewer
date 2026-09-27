@@ -15,4 +15,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "pnv-in-app-logs-viewer"
+
 include(":logviewer", ":sample")

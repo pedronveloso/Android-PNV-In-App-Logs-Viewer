@@ -18,9 +18,11 @@ android {
     targetCompatibility = JavaVersion.VERSION_17
   }
   buildFeatures { compose = true }
+  lint { warningsAsErrors = true }
 }
 
 dependencies {
+  lintChecks(libs.composeLints)
   implementation(platform(libs.composeBom))
   implementation(libs.composeUi)
   implementation(libs.composeMaterial3)

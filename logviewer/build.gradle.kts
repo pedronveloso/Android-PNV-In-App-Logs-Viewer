@@ -5,7 +5,7 @@ plugins {
 
 group = "com.pedronveloso"
 
-version = "0.1.0"
+version = "0.2.1"
 
 android {
   namespace = "com.pedronveloso.logviewer"
@@ -19,6 +19,7 @@ android {
     targetCompatibility = JavaVersion.VERSION_17
   }
   buildFeatures { compose = true }
+  lint { warningsAsErrors = true }
   testOptions {
     unitTests.isIncludeAndroidResources = true
     unitTests.all {
@@ -29,6 +30,7 @@ android {
 }
 
 dependencies {
+  lintChecks(libs.composeLints)
   api(libs.timber)
   implementation(libs.coreKtx)
   api(libs.coroutinesAndroid)
