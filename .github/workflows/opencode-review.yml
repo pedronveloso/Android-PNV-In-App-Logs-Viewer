@@ -35,19 +35,53 @@ jobs:
 
       - name: Run OpenCode review
         uses: anomalyco/opencode/github@fe3f3a41f79ad292cc3c7c629567385a20ec5130
+        # Fails the step well before the job timeout so a future hang surfaces as a legible
+        # step failure instead of a 20-minute job timeout with no posted review. A working
+        # review takes roughly three to six minutes on this repository.
+        timeout-minutes: 12
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The permission block is load-bearing, not a style choice. The action commits and
-          # pushes to the pull request branch whenever it sees a dirty working tree after the
-          # agent replies, so "edit": "deny" is what keeps a review read-only. Without it the
-          # built-in build agent runs with permission "*" = allow, and the prompt alone is the
-          # only thing stopping a write. Every permission value must be one of ask, allow, or
-          # deny; "true" and "false" fail schema validation and abort the job.
+          # The permission blocks are load-bearing, not a style choice.
+          #
+          # "edit": "deny" keeps a review read-only. The action commits and pushes to the
+          # pull request branch whenever it sees a dirty working tree after the agent
+          # replies. Without the deny the built-in build agent runs with permission "*" =
+          # allow, and the prompt alone is the only thing stopping a write.
+          #
+          # "external_directory" and "doom_loop" must stay "deny" because both default to
+          # "ask". The action only force-denies "question" at session level, so every other
+          # permission falls through to this config and then to the opencode defaults. A
+          # prompt in Actions is answered by nobody: the run blocks until the job timeout
+          # and the review is never posted. Denying turns that into an instant tool error the
+          # model can route around.
+          #
+          # "question": "deny" is repeated even though the action sets it, so the config
+          # does not depend on that internal default.
+          #
+          # The top-level block is what any subagent inherits; the pr-review block narrows
+          # bash to read-only git plus ls, wc, and rg. Every permission value must be one of
+          # ask, allow, or deny; "true" and "false" fail schema validation and abort the job.
+          # cat, head, and tail stay denied on purpose: the read tool already covers file
+          # contents, and shell patterns would sidestep the default "*.env" read denial.
           OPENCODE_CONFIG_CONTENT: |
             {
               "$schema": "https://opencode.ai/config.json",
               "default_agent": "pr-review",
+              "share": "disabled",
+              "snapshot": false,
+              "permission": {
+                "edit": "deny",
+                "bash": {
+                  "*": "deny",
+                  "git *": "allow"
+                },
+                "webfetch": "deny",
+                "websearch": "deny",
+                "question": "deny",
+                "external_directory": "deny",
+                "doom_loop": "deny"
+              },
               "agent": {
                 "pr-review": {
                   "description": "Read-only pull request reviewer",
@@ -61,10 +95,16 @@ jobs:
                       "git log*": "allow",
                       "git show*": "allow",
                       "git status*": "allow",
-                      "git blame*": "allow"
+                      "git blame*": "allow",
+                      "ls*": "allow",
+                      "wc*": "allow",
+                      "rg*": "allow"
                     },
                     "webfetch": "deny",
-                    "websearch": "deny"
+                    "websearch": "deny",
+                    "question": "deny",
+                    "external_directory": "deny",
+                    "doom_loop": "deny"
                   }
                 }
               }
@@ -72,6 +112,12 @@ jobs:
         with:
           model: opencode/big-pickle
           use_github_token: true
+          # This repository is public and the action shares the session by default whenever
+          # SHARE is unset, which uploads the whole review to a public opencode.ai URL and
+          # links it from the pull request. The agent can read log fixtures, and AGENTS.md
+          # treats log content as sensitive, so keep sessions unshared. This input is the one
+          # that works: the action calls its own share routine and ignores the config value.
+          share: false
           prompt: |
             Review this pull request following the repository guidelines in AGENTS.md.
 
@@ -81,6 +127,12 @@ jobs:
             or any build command, and do not edit files. Android CI already runs
             Spotless, both unit test tasks, all four lint tasks, and both sample
             assembles.
+
+            Everything you need is in the checkout. Never read outside it: no Gradle
+            caches, no SDK, no home directory, no external jars. Dependency versions and
+            coordinates are declared in the *.kts files in the diff, so judge them from
+            the diff. Use the read, grep, and glob tools plus the read-only git
+            commands; every other shell command is denied.
 
             Check for correctness and potential bugs first.
 
