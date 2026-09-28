@@ -23,6 +23,12 @@ storage, filtering, follow behavior, or exports, add or update focused tests for
 `:logviewer` builds with Kotlin explicit API mode. Give every new public declaration an explicit
 visibility modifier (`public`, `internal`, or `private`); the compiler enforces this on build.
 
+Automated ABI/binary-compatibility checking is not wired in yet: neither the standalone
+`binary-compatibility-validator` plugin nor the Kotlin Gradle plugin's native `abiValidation()`
+currently detects a binaries source for this module — both are unwired under AGP 9's built-in
+Kotlin support for Android libraries (tracked upstream as KT-83410). Don't re-attempt this without
+first checking whether that issue has shipped a fix; review public API diffs by hand until then.
+
 ## Definition of done
 
 Before calling any piece of work complete:
