@@ -81,4 +81,17 @@ class LogPresentationTest {
       )
       .contains("Persistent writes failed")
   }
+
+  @Test
+  fun `startup loss stays visible alongside working persistence`() {
+    val messages =
+      statusMessages(
+        LogCapabilities(true, true, true, true, isLibraryCapture = true),
+        LogHealth(installed = true, lastDiskWriteMillis = 123, startupEntriesDropped = true),
+      )
+    assertThat(messages.map(StatusMessage::title))
+      .containsAtLeast("Startup logs were dropped", "Crash persistence configured")
+    assertThat(messages.single { it.title == "Crash persistence configured" }.detail)
+      .contains("buffers early entries")
+  }
 }

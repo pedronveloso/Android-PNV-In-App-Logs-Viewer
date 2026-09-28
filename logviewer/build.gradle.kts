@@ -10,7 +10,7 @@ plugins {
 
 group = "io.github.pedronveloso"
 
-version = "0.6.0"
+version = "0.7.0"
 
 android {
   namespace = "com.pedronveloso.logviewer"
@@ -81,7 +81,7 @@ dependencies {
   api(libs.coroutinesAndroid)
   api(platform(libs.composeBom))
   api(libs.composeUi)
-  implementation(libs.composeUiToolingPreview)
+  compileOnly(libs.composeUiToolingPreview)
   implementation(libs.composeMaterial3)
   implementation(libs.composeIcons)
   implementation(libs.activityCompose)
@@ -90,6 +90,9 @@ dependencies {
   testImplementation(libs.robolectric)
   testImplementation(libs.androidxTestCore)
   testImplementation(libs.coroutinesTest)
+  testImplementation(platform(libs.composeBom))
+  testImplementation(libs.composeUiTest)
+  testImplementation(libs.composeUiTestManifest)
   androidTestImplementation(platform(libs.composeBom))
   androidTestImplementation(libs.composeUiTest)
   androidTestImplementation(libs.androidxJunit)

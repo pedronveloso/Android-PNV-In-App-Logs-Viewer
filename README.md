@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.6.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.7.0")
 }
 ```
 
@@ -70,11 +70,12 @@ LogViewer(source = capture, onBack = onBack)
 `persistAcrossCrashes` defaults to `false`. Memory keeps the newest 1,000 entries by default.
 Persistent capture keeps at most two 1 MiB segments for each of the three newest process sessions
 under the app's private, non-backed-up storage. Storage initializes in the background, so
-construction and `install()` do not perform disk I/O. Early logs are buffered and flushed in order;
+construction starts one background journal initialization, even before `install()`, while neither
+call performs disk I/O on its calling thread. Early logs are buffered and flushed in order;
 a crash before initialization finishes can lose them. The startup buffer is limited to 2 MiB of
-encoded entries, with older entries dropped and a Status error shown if it fills. Once storage is
-ready, each accepted entry is synced before Timber returns, so logging can add disk latency on its
-calling thread. Messages and separate throwable traces are each limited to 12,000 characters and
+encoded entries, with older entries dropped and a distinct Status notice shown if it fills. Once
+storage is ready, each accepted entry is synced before Timber returns, so logging can add disk
+latency on its calling thread. Messages and separate throwable traces are each limited to 12,000 characters and
 marked when truncated. An incomplete tail record after a crash is discarded while earlier complete
 records remain readable. Disk failure leaves the in-memory store operating and appears on Status.
 Persistence covers process crashes; it does not claim durability against device power loss.

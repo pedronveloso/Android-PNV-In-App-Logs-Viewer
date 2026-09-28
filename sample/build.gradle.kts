@@ -18,6 +18,8 @@ android {
     targetCompatibility = JavaVersion.VERSION_17
   }
   buildFeatures { compose = true }
+  // AGP exposes only a debug unit-test task here; keep its viewer-dependent test in testDebug.
+  sourceSets.getByName("test").java.directories.add("src/testDebug/java")
   lint { warningsAsErrors = true }
 }
 

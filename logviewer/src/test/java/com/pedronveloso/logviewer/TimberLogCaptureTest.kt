@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.CRC32
 import kotlin.concurrent.thread
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -188,7 +189,8 @@ class TimberLogCaptureTest {
     try {
       capture.install()
       repeat(3) { Timber.tag("Buffer").d("%d%s", it, message.drop(1)) }
-      assertThat(capture.health.value.writeError).contains("older entries were not persisted")
+      assertThat(capture.health.value.startupEntriesDropped).isTrue()
+      assertThat(capture.health.value.writeError).isNull()
 
       gate.complete(Unit)
       val session = withTimeout(5_000) { capture.sessions().single() }
@@ -197,7 +199,8 @@ class TimberLogCaptureTest {
         .inOrder()
       assertThat(DiskJournal(context, session.id).read(session.id).map(LogEntry::id))
         .containsExactly(2L)
-      assertThat(capture.health.value.writeError).contains("older entries were not persisted")
+      assertThat(capture.health.value.startupEntriesDropped).isTrue()
+      assertThat(capture.health.value.writeError).isNull()
     } finally {
       gate.complete(Unit)
       capture.uninstall()
@@ -231,6 +234,46 @@ class TimberLogCaptureTest {
         .containsExactlyElementsIn((0L..70L).toList())
         .inOrder()
     } finally {
+      gate.complete(Unit)
+      capture.uninstall()
+    }
+  }
+
+  @Test
+  fun `emission during blocked 65th flush write returns and drains in order`() = runBlocking {
+    val gate = CompletableDeferred<Unit>()
+    val writing65 = CountDownLatch(1)
+    val release65 = CountDownLatch(1)
+    val capture =
+      TimberLogCapture(context, 100, true, null, { 1000L }, Dispatchers.IO, 2 * 1024 * 1024) {
+        appContext,
+        id ->
+        gate.await()
+        val delegate = DiskJournal(appContext, id)
+        object : Journal by delegate {
+          override fun write(entry: LogEntry) {
+            if (entry.id == 64L) {
+              writing65.countDown()
+              check(release65.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+            delegate.write(entry)
+          }
+        }
+      }
+    try {
+      capture.install()
+      repeat(70) { Timber.d("entry %d", it) }
+      gate.complete(Unit)
+      assertThat(writing65.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue()
+      val emission = async(Dispatchers.Default) { Timber.d("during flush") }
+      withTimeout(2_000) { emission.await() }
+      release65.countDown()
+      val session = withTimeout(5_000) { capture.sessions().single() }
+      assertThat(DiskJournal(context, session.id).read(session.id).map(LogEntry::id))
+        .containsExactlyElementsIn((0L..70L).toList())
+        .inOrder()
+    } finally {
+      release65.countDown()
       gate.complete(Unit)
       capture.uninstall()
     }
@@ -313,20 +356,22 @@ class TimberLogCaptureTest {
           DiskJournal(appContext, id)
         },
       )
-    val sessions = async { capture.sessions() }
-    val entries = async { capture.entries(oldId) }
-    val clear = async { capture.clear(oldId) }
+    val sessions = async(start = CoroutineStart.UNDISPATCHED) { capture.sessions() }
+    val entries = async(start = CoroutineStart.UNDISPATCHED) { capture.entries(oldId) }
+    val clearId = "0000000001001-1234abcd"
+    DiskJournal(context, clearId).write(LogEntry(0, clearId, 1001L, Log.DEBUG, "Old", "clear me"))
+    val clear = async(start = CoroutineStart.UNDISPATCHED) { capture.clear(clearId) }
     assertThat(sessions.isCompleted).isFalse()
     assertThat(entries.isCompleted).isFalse()
     assertThat(clear.isCompleted).isFalse()
 
     gate.complete(Unit)
-    withTimeout(5_000) {
-      sessions.await()
-      entries.await()
-      clear.await()
-    }
-    assertThat(DiskJournal(context, oldId).read(oldId)).isEmpty()
+    val returnedSessions = withTimeout(5_000) { sessions.await() }
+    val returnedEntries = withTimeout(5_000) { entries.await() }
+    withTimeout(5_000) { clear.await() }
+    assertThat(returnedSessions.map(LogSession::id)).contains(oldId)
+    assertThat(returnedEntries.map(LogEntry::message)).containsExactly("old log")
+    assertThat(DiskJournal(context, clearId).read(clearId)).isEmpty()
   }
 
   @Test
@@ -347,6 +392,64 @@ class TimberLogCaptureTest {
     assertThat(restored.throwableStackTrace).contains("java.lang.IllegalStateException: boom")
     assertThat(formatLogEntries(listOf(restored)).split("java.lang.IllegalStateException: boom"))
       .hasSize(2)
+  }
+
+  @Test
+  fun `mismatched throwable formatting retains separately redacted trace`() = runBlocking {
+    val capture =
+      TimberLogCapture(
+        context,
+        persistAcrossCrashes = true,
+        clock = { 6000L },
+        redact = { it.replace("secret", "hidden") },
+      )
+    val sessionId = capture.sessions().first().id
+    val append =
+      TimberLogCapture::class
+        .java
+        .getDeclaredMethod(
+          "append",
+          Int::class.javaPrimitiveType,
+          String::class.java,
+          String::class.java,
+          Throwable::class.java,
+        )
+        .apply { isAccessible = true }
+    append.invoke(
+      capture,
+      Log.ERROR,
+      "Trace",
+      "secret: differently formatted exception",
+      IllegalStateException("secret"),
+    )
+    val stored = DiskJournal(context, sessionId).read(sessionId).single()
+    assertThat(stored.message).isEqualTo("hidden: differently formatted exception")
+    assertThat(stored.throwableStackTrace).contains("IllegalStateException: hidden")
+    assertThat(stored.throwableStackTrace).doesNotContain("secret")
+  }
+
+  @Test
+  fun `journal six field round trip and encoded size include unicode`() {
+    val sessionId = "0000000001000-1234abcd"
+    val journal = DiskJournal(context, sessionId)
+    val entry = LogEntry(123, sessionId, 456, Log.ERROR, "Täg", "Message 🧪", "Trace é")
+    val predictedSize = DiskJournal.encodedRecordSize(entry)
+    journal.write(entry)
+    assertThat(File(directory, "s-$sessionId.0").length()).isEqualTo(predictedSize.toLong())
+    assertThat(journal.read(sessionId)).containsExactly(entry)
+  }
+
+  @Test
+  fun `uninstall only detaches its own tree and can be repeated`() = runBlocking {
+    val other = object : Timber.DebugTree() {}
+    Timber.plant(other)
+    val capture = TimberLogCapture(context)
+    capture.install()
+    capture.install()
+    capture.uninstall()
+    capture.uninstall()
+    assertThat(Timber.forest()).containsExactly(other)
+    assertThat(capture.health.value.installed).isFalse()
   }
 
   @Test
@@ -439,5 +542,39 @@ class TimberLogCaptureTest {
     val current = capture.sessions().first().id
     assertThat(capture.entries(current).map(LogEntry::message)).containsExactly("Still captured")
     assertThat(capture.health.value.writeError).isNotNull()
+  }
+
+  @Test
+  fun `write failure retains older sessions for reading and clearing`() = runBlocking {
+    val oldId = "0000000001000-1234abcd"
+    DiskJournal(context, oldId).write(LogEntry(0, oldId, 1000L, Log.DEBUG, "Old", "disk only"))
+    val capture =
+      TimberLogCapture(context, 1, true, null, { 2000L }, Dispatchers.IO, 2 * 1024 * 1024) {
+        appContext,
+        id ->
+        val delegate = DiskJournal(appContext, id)
+        object : Journal by delegate {
+          override fun write(entry: LogEntry) {
+            if (entry.id == 1L) throw IOException("Disk full")
+            delegate.write(entry)
+          }
+        }
+      }
+    capture.install()
+    try {
+      val currentId = capture.sessions().first().id
+      Timber.d("first")
+      Timber.d("second")
+      assertThat(capture.health.value.writeError).contains("Disk full")
+      assertThat(capture.entries(currentId).map(LogEntry::message))
+        .containsExactly("first", "second")
+        .inOrder()
+      assertThat(capture.sessions().map(LogSession::id)).contains(oldId)
+      assertThat(capture.entries(oldId).map(LogEntry::message)).containsExactly("disk only")
+      capture.clear(oldId)
+      assertThat(capture.entries(oldId)).isEmpty()
+    } finally {
+      capture.uninstall()
+    }
   }
 }

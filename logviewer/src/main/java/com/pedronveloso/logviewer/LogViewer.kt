@@ -766,7 +766,7 @@ private fun NoMatchingEntriesPreview() {
   }
 }
 
-private fun shareLogs(context: Context, text: String) {
+internal fun shareLogs(context: Context, text: String) {
   val directory = File(context.cacheDir, "pnv-logviewer-exports")
   check(directory.isDirectory || directory.mkdirs()) { "Could not prepare export" }
   val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L

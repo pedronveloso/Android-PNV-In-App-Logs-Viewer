@@ -22,8 +22,9 @@ import timber.log.Timber
 
 /**
  * Opt-in Timber capture. Call [install] once from the host Application. With persistence enabled,
- * startup emissions are buffered until disk storage is ready. Later emissions are synced before
- * Timber returns, which can slow logging on the calling thread.
+ * construction starts one background journal initialization, even before [install]. Startup
+ * emissions are buffered until disk storage is ready. Later emissions are synced before Timber
+ * returns, which can slow logging on the calling thread.
  */
 class TimberLogCapture
 internal constructor(
@@ -34,7 +35,7 @@ internal constructor(
   private val clock: () -> Long,
   private val ioDispatcher: CoroutineDispatcher,
   private val maxPendingBytes: Int,
-  private val createJournal: suspend (Context, String) -> DiskJournal,
+  private val createJournal: suspend (Context, String) -> Journal,
 ) : LogSource {
   constructor(
     context: Context,
@@ -68,7 +69,8 @@ internal constructor(
   private var pendingBytes = 0
   private var nextId = 0L
   private var planted = false
-  private var journal: DiskJournal? = null
+  private var journal: Journal? = null
+  private var diskWritable = true
   private val initialization = CompletableDeferred<Unit>()
   private val revision = MutableStateFlow(0L)
   override val changes: Flow<Unit> = revision.map {}
@@ -179,12 +181,11 @@ internal constructor(
         }
         return
       }
-    var flushed = 0
-    while (flushed < MAX_BACKGROUND_FLUSH_ENTRIES) {
+    synchronized(lock) { journal = initialized }
+    while (true) {
       val next =
         synchronized(lock) {
           if (pending.isEmpty()) {
-            journal = initialized
             initialization.complete(Unit)
             null
           } else {
@@ -197,6 +198,7 @@ internal constructor(
         synchronized(lock) {
           pending.clear()
           pendingBytes = 0
+          diskWritable = false
           mutableHealth.value =
             mutableHealth.value.copy(writeError = failure.message ?: "Could not write logs")
           initialization.complete(Unit)
@@ -207,27 +209,6 @@ internal constructor(
         mutableHealth.value =
           mutableHealth.value.copy(lastDiskWriteMillis = next.entry.timestampMillis)
       }
-      flushed++
-    }
-    synchronized(lock) {
-      while (pending.isNotEmpty()) {
-        val next = pending.removeFirst()
-        pendingBytes -= next.bytes
-        try {
-          initialized.write(next.entry)
-        } catch (failure: Exception) {
-          pending.clear()
-          pendingBytes = 0
-          mutableHealth.value =
-            mutableHealth.value.copy(writeError = failure.message ?: "Could not write logs")
-          initialization.complete(Unit)
-          return
-        }
-        mutableHealth.value =
-          mutableHealth.value.copy(lastDiskWriteMillis = next.entry.timestampMillis)
-      }
-      journal = initialized
-      initialization.complete(Unit)
     }
   }
 
@@ -242,31 +223,34 @@ internal constructor(
     val stackTrace = throwable?.let {
       StringWriter(256).also { writer -> it.printStackTrace(PrintWriter(writer)) }.toString()
     }
-    val separateTrace = stackTrace?.takeIf { message == it || message.endsWith("\n$it") }
+    val hasExactSuffix =
+      stackTrace != null &&
+        message.length > stackTrace.length &&
+        message[message.length - stackTrace.length - 1] == '\n' &&
+        message.regionMatches(message.length - stackTrace.length, stackTrace, 0, stackTrace.length)
     val plainMessage =
       when {
-        separateTrace == null -> message
-        message == separateTrace -> ""
-        message.endsWith("\n$separateTrace") -> message.removeSuffix("\n$separateTrace")
+        message == stackTrace -> ""
+        hasExactSuffix -> message.substring(0, message.length - stackTrace.length - 1)
         else -> message
       }
     val entryMessage = truncate(safeRedact(plainMessage))
     val entryTag = tag?.let(::safeRedact)?.take(MAX_TAG_CHARS)
-    val entryStackTrace = separateTrace?.let(::safeRedact)?.trimEnd()?.let(::truncate)
+    val entryStackTrace = stackTrace?.let(::safeRedact)?.trimEnd()?.let(::truncate)
     synchronized(lock) {
       val entry =
         LogEntry(nextId++, sessionId, clock(), priority, entryTag, entryMessage, entryStackTrace)
       if (memory.size == capacity) memory.removeFirst()
       memory.addLast(entry)
       val activeJournal = journal
-      if (activeJournal != null) {
+      if (activeJournal != null && initialization.isCompleted && diskWritable) {
         runCatching { activeJournal.write(entry) }
           .onSuccess {
             mutableHealth.value =
               mutableHealth.value.copy(lastDiskWriteMillis = entry.timestampMillis)
           }
           .onFailure {
-            journal = null
+            diskWritable = false
             mutableHealth.value =
               mutableHealth.value.copy(writeError = it.message ?: "Could not write logs")
           }
@@ -280,10 +264,7 @@ internal constructor(
           discarded = true
         }
         if (discarded) {
-          mutableHealth.value =
-            mutableHealth.value.copy(
-              writeError = "Startup log buffer filled; older entries were not persisted"
-            )
+          mutableHealth.value = mutableHealth.value.copy(startupEntriesDropped = true)
         }
       }
       revision.value += 1
@@ -291,7 +272,6 @@ internal constructor(
   }
 
   private companion object {
-    const val MAX_BACKGROUND_FLUSH_ENTRIES = 64
     const val MAX_PENDING_BYTES = 2 * 1024 * 1024
     const val MAX_MESSAGE_CHARS = 12_000
     const val MAX_TAG_CHARS = 256

@@ -118,12 +118,21 @@ fun statusMessages(capabilities: LogCapabilities, health: LogHealth): List<Statu
     health.writeError?.let {
       add(StatusMessage("Persistent writes failed", "$it. In-memory capture continues.", true))
     }
+    if (health.startupEntriesDropped) {
+      add(
+        StatusMessage(
+          "Startup logs were dropped",
+          "The startup buffer filled before storage was ready; some earlier entries were not persisted.",
+          true,
+        )
+      )
+    }
     if (capabilities.persistsAcrossCrashes && health.writeError == null) {
       add(
         StatusMessage(
           "Crash persistence configured",
           if (capabilities.isLibraryCapture)
-            "The library writes each accepted entry to app-private storage before Timber returns."
+            "The library buffers early entries, then writes later entries to app-private storage before Timber returns."
           else "Persistence is declared by the host app and cannot be verified by this viewer.",
           false,
         )

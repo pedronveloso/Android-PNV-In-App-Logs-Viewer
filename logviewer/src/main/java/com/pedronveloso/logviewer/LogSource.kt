@@ -3,7 +3,10 @@ package com.pedronveloso.logviewer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-/** One log emission. [throwableStackTrace] is optional; [message] excludes it when supplied. */
+/**
+ * One log emission. [message] can contain trace text when its formatting differs from
+ * [throwableStackTrace].
+ */
 data class LogEntry(
   val id: Long,
   val sessionId: String,
@@ -36,6 +39,7 @@ data class LogHealth(
   val readError: String? = null,
   val writeError: String? = null,
   val lastDiskWriteMillis: Long? = null,
+  val startupEntriesDropped: Boolean = false,
 )
 
 /**

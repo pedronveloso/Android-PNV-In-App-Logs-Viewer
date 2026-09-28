@@ -8,7 +8,17 @@ import java.util.Base64
 import java.util.zip.CRC32
 
 /** Two bounded segments per session. A checksum and length discard an interrupted last record. */
-internal class DiskJournal(context: Context, private val currentId: String) {
+internal interface Journal {
+  fun write(entry: LogEntry)
+
+  fun read(sessionId: String): List<LogEntry>
+
+  fun sessions(): List<LogSession>
+
+  fun clear(sessionId: String)
+}
+
+internal class DiskJournal(context: Context, private val currentId: String) : Journal {
   private val directory = File(context.noBackupFilesDir, "pnv-logviewer")
 
   init {
@@ -19,7 +29,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     prune()
   }
 
-  fun write(entry: LogEntry) {
+  override fun write(entry: LogEntry) {
     val payload = encode(entry)
     check(payload.size <= MAX_RECORD_BYTES) { "Log entry exceeds the disk record limit" }
     val current = file(currentId, 0)
@@ -38,12 +48,12 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     }
   }
 
-  fun read(sessionId: String): List<LogEntry> =
+  override fun read(sessionId: String): List<LogEntry> =
     if (VALID_ID.matches(sessionId))
       listOf(file(sessionId, 1), file(sessionId, 0)).flatMap { readFile(it, sessionId) }
     else emptyList()
 
-  fun sessions(): List<LogSession> {
+  override fun sessions(): List<LogSession> {
     val ids =
       directory
         .listFiles()
@@ -56,7 +66,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     }
   }
 
-  fun clear(sessionId: String) {
+  override fun clear(sessionId: String) {
     require(VALID_ID.matches(sessionId)) { "Invalid session ID" }
     listOf(file(sessionId, 0), file(sessionId, 1)).forEach {
       check(!it.exists() || it.delete()) { "Could not delete log file" }
@@ -104,7 +114,18 @@ internal class DiskJournal(context: Context, private val currentId: String) {
   }
 
   companion object {
-    internal fun encodedRecordSize(entry: LogEntry): Int = HEADER_BYTES + encode(entry).size
+    internal fun encodedRecordSize(entry: LogEntry): Int {
+      fun fieldSize(value: String): Int =
+        ((value.toByteArray(StandardCharsets.UTF_8).size + 2) / 3) * 4
+      return HEADER_BYTES +
+        entry.id.toString().length +
+        entry.timestampMillis.toString().length +
+        entry.priority.toString().length +
+        fieldSize(entry.tag.orEmpty()) +
+        fieldSize(entry.message) +
+        fieldSize(entry.throwableStackTrace.orEmpty()) +
+        5 // tab separators
+    }
 
     private fun encode(entry: LogEntry): ByteArray {
       val encoder = Base64.getEncoder()

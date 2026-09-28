@@ -19,7 +19,7 @@ Keep the Portal token and private signing key in GitHub Actions secrets, never i
    ./gradlew spotlessApply
    ./gradlew spotlessCheck
    ./gradlew :logviewer:testDebugUnitTest
-   ./gradlew :sample:testDebugUnitTest
+   ./gradlew :sample:test
    ./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease
    ./gradlew :sample:assembleDebug :sample:assembleRelease
    ```
@@ -30,9 +30,11 @@ Keep the Portal token and private signing key in GitHub Actions secrets, never i
    its POM must carry the correct group, artifact, version, Apache 2.0 license, developer, SCM, and
    transitive dependencies. Keep the [license file](../LICENSE) in the release commit.
 4. Merge the reviewed changes into `main`, then update your local `main` and tag that commit. For
-   `0.4.0`, run `git switch main`, `git pull --ff-only origin main`, `git tag v0.4.0`, and
-   `git push origin v0.4.0`. The tag push starts the release workflow automatically. The workflow
-   rejects tags whose commit is not on `main` or whose version differs from `:logviewer`. Do not
+   the current library version, run `git switch main`, `git pull --ff-only origin main`, then
+   `version=$(./gradlew -q :logviewer:properties --property version | sed -n 's/^version: //p')`,
+   `git tag "v$version"`, and `git push origin "v$version"`. The tag push starts the release
+   workflow automatically. It rejects tags whose commit is not on `main` or whose version differs
+   from `:logviewer`. Do not
    move a tag for a version already published to Central, where releases are immutable.
 
 ## Monitor publication
