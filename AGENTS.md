@@ -20,6 +20,9 @@ Treat log content as potentially sensitive. Apply redaction before captured entr
 or disk, and preserve the behavior of caller-provided `LogSource` implementations. When changing
 storage, filtering, follow behavior, or exports, add or update focused tests for the behavior.
 
+`:logviewer` builds with Kotlin explicit API mode. Give every new public declaration an explicit
+visibility modifier (`public`, `internal`, or `private`); the compiler enforces this on build.
+
 ## Definition of done
 
 Before calling any piece of work complete:

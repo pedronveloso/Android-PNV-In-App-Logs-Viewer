@@ -10,7 +10,9 @@ plugins {
 
 group = "io.github.pedronveloso"
 
-version = "0.7.0"
+version = "0.8.0"
+
+kotlin { explicitApi() }
 
 android {
   namespace = "com.pedronveloso.logviewer"

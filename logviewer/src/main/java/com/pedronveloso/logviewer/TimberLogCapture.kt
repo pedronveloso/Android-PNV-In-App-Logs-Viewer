@@ -26,7 +26,7 @@ import timber.log.Timber
  * emissions are buffered until disk storage is ready. Later emissions are synced before Timber
  * returns, which can slow logging on the calling thread.
  */
-class TimberLogCapture
+public class TimberLogCapture
 internal constructor(
   context: Context,
   private val capacity: Int,
@@ -37,7 +37,7 @@ internal constructor(
   private val maxPendingBytes: Int,
   private val createJournal: suspend (Context, String) -> Journal,
 ) : LogSource {
-  constructor(
+  public constructor(
     context: Context,
     capacity: Int = 1000,
     persistAcrossCrashes: Boolean = false,
@@ -98,7 +98,7 @@ internal constructor(
   }
 
   /** Plant only this tree; unrelated Timber trees remain the host app's responsibility. */
-  fun install() =
+  public fun install(): Unit =
     synchronized(lock) {
       if (!planted) {
         Timber.plant(tree)
@@ -107,7 +107,7 @@ internal constructor(
       }
     }
 
-  fun uninstall() =
+  public fun uninstall(): Unit =
     synchronized(lock) {
       if (planted) {
         Timber.uproot(tree)

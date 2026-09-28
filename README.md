@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.7.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.8.0")
 }
 ```
 
@@ -41,6 +41,10 @@ pre-1.0, bump MINOR for new features or breaking changes and PATCH for fixes, do
 tooling. From 1.0 onward, bump MAJOR for breaking API changes, MINOR for compatible features, and
 PATCH for fixes, documentation, or tooling.
 Use the highest applicable bump when a change set contains more than one kind of change.
+
+`:logviewer` builds with Kotlin's [explicit API mode](https://kotlinlang.org/docs/whatsnew14.html#explicit-api-mode-for-library-authors)
+(`kotlin { explicitApi() }`), so every public declaration must carry an explicit visibility
+modifier. This keeps the public surface intentional ahead of the SemVer policy above.
 
 ## Publish a release
 
