@@ -30,10 +30,8 @@ jobs:
         with:
           # The agent diffs against the base branch, so it needs the full history.
           fetch-depth: 0
-          # The action configures its own http.https://github.com/.extraheader before it
-          # fetches the PR branch, so the checkout credential is redundant. Leaving it out
-          # keeps the Actions token out of a file the agent can read.
-          persist-credentials: false
+          # Must be true, otherwise will fail.
+          persist-credentials: true
 
       - name: Run OpenCode review
         uses: anomalyco/opencode/github@fe3f3a41f79ad292cc3c7c629567385a20ec5130
