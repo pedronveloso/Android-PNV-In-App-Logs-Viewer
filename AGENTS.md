@@ -24,11 +24,13 @@ storage, filtering, follow behavior, or exports, add or update focused tests for
 
 Before calling any piece of work complete:
 
-1. Bump the `:logviewer` version for every change set and update the README dependency example.
-   Follow the SemVer policy in the README; use the highest applicable bump for mixed changes.
-   Dependabot pull requests are exempt: merge them without a version bump or dependency-example
-   edit. The one exception is that a bump to AGP, Kotlin, or the Compose BOM must still update the
-   toolchain sentence at the top of the README, because that line documents the tested combination.
+1. Bump the `:logviewer` version when a change set modifies the library, and update the README
+   dependency example to match. Follow the SemVer policy in the README; use the highest
+   applicable bump for mixed changes. Changes that touch only CI workflows, docs, or the sample's
+   own code do not need a version bump. Dependabot pull requests are also exempt: merge them
+   without a version bump or dependency-example edit. The one exception is that a bump to AGP,
+   Kotlin, or the Compose BOM must still update the toolchain sentence at the top of the README,
+   because that line documents the tested combination.
 2. Run `./gradlew spotlessApply`, then `./gradlew spotlessCheck`. Review the formatting changes.
 3. Run the library unit tests with `./gradlew :logviewer:testDebugUnitTest`.
 4. Run Android lint, including Compose lint, for both variants of both modules:

@@ -30,13 +30,22 @@ jobs:
         with:
           # The agent diffs against the base branch, so it needs the full history.
           fetch-depth: 0
-          persist-credentials: true
+          # The action configures its own http.https://github.com/.extraheader before it
+          # fetches the PR branch, so the checkout credential is redundant. Leaving it out
+          # keeps the Actions token out of a file the agent can read.
+          persist-credentials: false
 
       - name: Run OpenCode review
         uses: anomalyco/opencode/github@fe3f3a41f79ad292cc3c7c629567385a20ec5130
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The permission block is load-bearing, not a style choice. The action commits and
+          # pushes to the pull request branch whenever it sees a dirty working tree after the
+          # agent replies, so "edit": "deny" is what keeps a review read-only. Without it the
+          # built-in build agent runs with permission "*" = allow, and the prompt alone is the
+          # only thing stopping a write. Every permission value must be one of ask, allow, or
+          # deny; "true" and "false" fail schema validation and abort the job.
           OPENCODE_CONFIG_CONTENT: |
             {
               "$schema": "https://opencode.ai/config.json",
@@ -56,8 +65,8 @@ jobs:
                       "git status*": "allow",
                       "git blame*": "allow"
                     },
-                    "webfetch": "false",
-                    "websearch": "false"
+                    "webfetch": "deny",
+                    "websearch": "deny"
                   }
                 }
               }
