@@ -38,6 +38,9 @@ jobs:
       - name: Run library unit tests
         run: ./gradlew :logviewer:testDebugUnitTest
 
+      - name: Run sample unit tests
+        run: ./gradlew :sample:test
+
       - name: Lint library and sample variants
         run: ./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease
 

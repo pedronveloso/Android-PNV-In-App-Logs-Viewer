@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-  debugImplementation("io.github.pedronveloso:logviewer:0.3.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.8.0")
 }
 ```
 
@@ -41,6 +41,10 @@ pre-1.0, bump MINOR for new features or breaking changes and PATCH for fixes, do
 tooling. From 1.0 onward, bump MAJOR for breaking API changes, MINOR for compatible features, and
 PATCH for fixes, documentation, or tooling.
 Use the highest applicable bump when a change set contains more than one kind of change.
+
+`:logviewer` builds with Kotlin's [explicit API mode](https://kotlinlang.org/docs/whatsnew14.html#explicit-api-mode-for-library-authors)
+(`kotlin { explicitApi() }`), so every public declaration must carry an explicit visibility
+modifier. This keeps the public surface intentional ahead of the SemVer policy above.
 
 ## Publish a release
 
@@ -69,12 +73,16 @@ LogViewer(source = capture, onBack = onBack)
 
 `persistAcrossCrashes` defaults to `false`. Memory keeps the newest 1,000 entries by default.
 Persistent capture keeps at most two 1 MiB segments for each of the three newest process sessions
-under the app's private, non-backed-up storage. It syncs every accepted entry before Timber
-returns, so it adds disk latency to the logging call. Entries are limited to 12,000 message
-characters and marked when truncated. An incomplete tail record after a crash is discarded while
-earlier complete records remain readable. Disk failure leaves the in-memory store operating and
-appears on Status. Persistence covers process crashes; it does not claim durability against
-device power loss.
+under the app's private, non-backed-up storage. Storage initializes in the background, so
+construction starts one background journal initialization, even before `install()`, while neither
+call performs disk I/O on its calling thread. Early logs are buffered and flushed in order;
+a crash before initialization finishes can lose them. The startup buffer is limited to 2 MiB of
+encoded entries, with older entries dropped and a distinct Status notice shown if it fills. Once
+storage is ready, each accepted entry is synced before Timber returns, so logging can add disk
+latency on its calling thread. Messages and separate throwable traces are each limited to 12,000 characters and
+marked when truncated. An incomplete tail record after a crash is discarded while earlier complete
+records remain readable. Disk failure leaves the in-memory store operating and appears on Status.
+Persistence covers process crashes; it does not claim durability against device power loss.
 
 `StandardLogRedactor` is an opt-in policy for URLs, common credential fields, Bearer and Basic
 values, email addresses, and UUIDs. Pass `StandardLogRedactor::redact` as shown above to use it;
@@ -91,7 +99,9 @@ Implement `LogSource` to adapt an app's in-memory or persistent Timber store. Su
 session and entry snapshots, `capabilities` and `health` state flows, and a `changes` flow if new
 entries should appear automatically. Return `null` for `changes` if the viewer should offer only
 manual refresh. `LogEntry.id` must be unique and increasing within each session so list rows and
-Follow remain stable. Set `canClear = false` for a read-only source.
+Follow remain stable. Set `canClear = false` for a read-only source. Set
+`throwableStackTrace` when a source has separate exception details; in that case, keep the trace
+out of `message`. Existing sources that include traces in `message` continue to display as supplied.
 
 Status cannot inspect arbitrary Timber trees. For an external source it reports persistence and
 redaction as claims made by the host app and displays any read or write errors the adapter exposes.

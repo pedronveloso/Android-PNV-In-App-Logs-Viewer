@@ -3,52 +3,57 @@ package com.pedronveloso.logviewer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-/** One rendered Timber emission. [message] already includes Timber's throwable stack trace. */
-data class LogEntry(
-  val id: Long,
-  val sessionId: String,
-  val timestampMillis: Long,
-  val priority: Int,
-  val tag: String?,
-  val message: String,
+/**
+ * One log emission. [message] can contain trace text when its formatting differs from
+ * [throwableStackTrace].
+ */
+public data class LogEntry(
+  public val id: Long,
+  public val sessionId: String,
+  public val timestampMillis: Long,
+  public val priority: Int,
+  public val tag: String?,
+  public val message: String,
+  public val throwableStackTrace: String? = null,
 )
 
-data class LogSession(
-  val id: String,
-  val startedAtMillis: Long,
-  val isCurrent: Boolean,
+public data class LogSession(
+  public val id: String,
+  public val startedAtMillis: Long,
+  public val isCurrent: Boolean,
 )
 
 /** For external sources, these are claims supplied by the host app. */
-data class LogCapabilities(
-  val hasInMemoryLogs: Boolean,
-  val persistsAcrossCrashes: Boolean,
-  val hasLiveUpdates: Boolean,
-  val redactionConfigured: Boolean,
-  val isLibraryCapture: Boolean = false,
-  val canClear: Boolean = true,
+public data class LogCapabilities(
+  public val hasInMemoryLogs: Boolean,
+  public val persistsAcrossCrashes: Boolean,
+  public val hasLiveUpdates: Boolean,
+  public val redactionConfigured: Boolean,
+  public val isLibraryCapture: Boolean = false,
+  public val canClear: Boolean = true,
 )
 
 /** Observable integration health. Null [installed] means the host did not provide this signal. */
-data class LogHealth(
-  val installed: Boolean? = null,
-  val readError: String? = null,
-  val writeError: String? = null,
-  val lastDiskWriteMillis: Long? = null,
+public data class LogHealth(
+  public val installed: Boolean? = null,
+  public val readError: String? = null,
+  public val writeError: String? = null,
+  public val lastDiskWriteMillis: Long? = null,
+  public val startupEntriesDropped: Boolean = false,
 )
 
 /**
  * Adapt an existing Timber store by implementing this interface. Return immutable snapshots; the
  * viewer does filtering itself. A null [changes] means that the viewer offers manual refresh.
  */
-interface LogSource {
-  val changes: Flow<Unit>?
-  val capabilities: StateFlow<LogCapabilities>
-  val health: StateFlow<LogHealth>
+public interface LogSource {
+  public val changes: Flow<Unit>?
+  public val capabilities: StateFlow<LogCapabilities>
+  public val health: StateFlow<LogHealth>
 
-  suspend fun sessions(): List<LogSession>
+  public suspend fun sessions(): List<LogSession>
 
-  suspend fun entries(sessionId: String): List<LogEntry>
+  public suspend fun entries(sessionId: String): List<LogEntry>
 
-  suspend fun clear(sessionId: String)
+  public suspend fun clear(sessionId: String)
 }

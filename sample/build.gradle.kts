@@ -18,6 +18,8 @@ android {
     targetCompatibility = JavaVersion.VERSION_17
   }
   buildFeatures { compose = true }
+  // AGP exposes only a debug unit-test task here; keep its viewer-dependent test in testDebug.
+  sourceSets.getByName("test").java.directories.add("src/testDebug/java")
   lint { warningsAsErrors = true }
 }
 
@@ -25,7 +27,12 @@ dependencies {
   lintChecks(libs.composeLints)
   implementation(platform(libs.composeBom))
   implementation(libs.composeUi)
+  implementation(libs.composeUiToolingPreview)
   implementation(libs.composeMaterial3)
   implementation(libs.activityCompose)
+  implementation(libs.coreKtx)
   debugImplementation(project(":logviewer"))
+  debugImplementation(libs.composeUiTooling)
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }

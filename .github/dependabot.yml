@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    # Unmatched dependencies (timber, coroutines) are raised as individual pull
+    # requests. Versionless catalog entries follow the compose BOM, so they move
+    # with the androidx group and never get their own pull request.
+    groups:
+      android-toolchain:
+        patterns:
+          - "com.android.*"
+          # Anchored on "kotlin" plus a separator so org.jetbrains.kotlinx
+          # (coroutines) is not swept in. Covers both the plugin marker and the
+          # underlying artifact naming.
+          - "org.jetbrains.kotlin.*"
+          - "org.jetbrains.kotlin:*"
+      androidx:
+        patterns:
+          - "androidx.*"
+      test-libs:
+        patterns:
+          - "junit:*"
+          - "com.google.truth:*"
+          - "org.robolectric:*"
+      build-tooling:
+        patterns:
+          - "com.diffplug.*"
+          - "com.vanniktech*"
+          - "com.slack.lint.compose:*"
+          - "org.gradle.toolchains*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    # Excluded on purpose: a monthly auto-bump of a new, fast-moving action could
+    # change agent defaults or break the review job without anyone testing it.
+    ignore:
+      - dependency-name: "anomalyco/opencode*"
+    groups:
+      actions:
+        patterns:
+          - "*"

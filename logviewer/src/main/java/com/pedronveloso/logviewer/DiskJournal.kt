@@ -8,7 +8,17 @@ import java.util.Base64
 import java.util.zip.CRC32
 
 /** Two bounded segments per session. A checksum and length discard an interrupted last record. */
-internal class DiskJournal(context: Context, private val currentId: String) {
+internal interface Journal {
+  fun write(entry: LogEntry)
+
+  fun read(sessionId: String): List<LogEntry>
+
+  fun sessions(): List<LogSession>
+
+  fun clear(sessionId: String)
+}
+
+internal class DiskJournal(context: Context, private val currentId: String) : Journal {
   private val directory = File(context.noBackupFilesDir, "pnv-logviewer")
 
   init {
@@ -19,7 +29,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     prune()
   }
 
-  fun write(entry: LogEntry) {
+  override fun write(entry: LogEntry) {
     val payload = encode(entry)
     check(payload.size <= MAX_RECORD_BYTES) { "Log entry exceeds the disk record limit" }
     val current = file(currentId, 0)
@@ -38,12 +48,12 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     }
   }
 
-  fun read(sessionId: String): List<LogEntry> =
+  override fun read(sessionId: String): List<LogEntry> =
     if (VALID_ID.matches(sessionId))
       listOf(file(sessionId, 1), file(sessionId, 0)).flatMap { readFile(it, sessionId) }
     else emptyList()
 
-  fun sessions(): List<LogSession> {
+  override fun sessions(): List<LogSession> {
     val ids =
       directory
         .listFiles()
@@ -56,7 +66,7 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     }
   }
 
-  fun clear(sessionId: String) {
+  override fun clear(sessionId: String) {
     require(VALID_ID.matches(sessionId)) { "Invalid session ID" }
     listOf(file(sessionId, 0), file(sessionId, 1)).forEach {
       check(!it.exists() || it.delete()) { "Could not delete log file" }
@@ -87,23 +97,9 @@ internal class DiskJournal(context: Context, private val currentId: String) {
     return entries
   }
 
-  private fun encode(entry: LogEntry): ByteArray {
-    val encoder = Base64.getEncoder()
-    fun field(value: String) = encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-    return listOf(
-        entry.id,
-        entry.timestampMillis,
-        entry.priority,
-        field(entry.tag.orEmpty()),
-        field(entry.message),
-      )
-      .joinToString("\t")
-      .toByteArray(StandardCharsets.UTF_8)
-  }
-
   private fun decode(payload: ByteArray, sessionId: String): LogEntry {
     val parts = String(payload, StandardCharsets.UTF_8).split('\t')
-    require(parts.size == 5)
+    require(parts.size == 5 || parts.size == 6)
     fun field(value: String) = String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8)
     val tag = field(parts[3]).ifBlank { null }
     return LogEntry(
@@ -113,10 +109,39 @@ internal class DiskJournal(context: Context, private val currentId: String) {
       parts[2].toInt(),
       tag,
       field(parts[4]),
+      parts.getOrNull(5)?.let(::field)?.ifBlank { null },
     )
   }
 
   companion object {
+    internal fun encodedRecordSize(entry: LogEntry): Int {
+      fun fieldSize(value: String): Int =
+        ((value.toByteArray(StandardCharsets.UTF_8).size + 2) / 3) * 4
+      return HEADER_BYTES +
+        entry.id.toString().length +
+        entry.timestampMillis.toString().length +
+        entry.priority.toString().length +
+        fieldSize(entry.tag.orEmpty()) +
+        fieldSize(entry.message) +
+        fieldSize(entry.throwableStackTrace.orEmpty()) +
+        5 // tab separators
+    }
+
+    private fun encode(entry: LogEntry): ByteArray {
+      val encoder = Base64.getEncoder()
+      fun field(value: String) = encoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+      return listOf(
+          entry.id,
+          entry.timestampMillis,
+          entry.priority,
+          field(entry.tag.orEmpty()),
+          field(entry.message),
+          field(entry.throwableStackTrace.orEmpty()),
+        )
+        .joinToString("\t")
+        .toByteArray(StandardCharsets.UTF_8)
+    }
+
     private val VALID_ID = Regex("\\d{13}-[0-9a-f]{8}")
     private val SESSION_FILE = Regex("s-(\\d{13}-[0-9a-f]{8})\\.[01]")
     private const val HEADER_BYTES = 8

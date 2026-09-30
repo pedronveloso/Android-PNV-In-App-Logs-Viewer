@@ -5,7 +5,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class LogLevel(val priority: Int, val shortLabel: String) {
+public enum class LogLevel(public val priority: Int, public val shortLabel: String) {
   VERBOSE(Log.VERBOSE, "V"),
   DEBUG(Log.DEBUG, "D"),
   INFO(Log.INFO, "I"),
@@ -13,22 +13,25 @@ enum class LogLevel(val priority: Int, val shortLabel: String) {
   ERROR(Log.ERROR, "E"),
   ASSERT(Log.ASSERT, "A");
 
-  companion object {
-    fun fromPriority(priority: Int): LogLevel =
+  public companion object {
+    public fun fromPriority(priority: Int): LogLevel =
       entries.firstOrNull { it.priority == priority } ?: DEBUG
   }
 }
 
-data class LogFilter(val minimumLevel: LogLevel = LogLevel.VERBOSE, val query: String = "")
+public data class LogFilter(
+  public val minimumLevel: LogLevel = LogLevel.VERBOSE,
+  public val query: String = "",
+)
 
-fun LogEntry.matches(filter: LogFilter): Boolean =
+public fun LogEntry.matches(filter: LogFilter): Boolean =
   priority >= filter.minimumLevel.priority &&
     (filter.query.isBlank() ||
       message.contains(filter.query, ignoreCase = true) ||
       tag?.contains(filter.query, ignoreCase = true) == true)
 
-/** Render only the selected entries, without appending a throwable a second time. */
-fun formatLogEntries(entries: List<LogEntry>): String {
+/** Render only the selected entries, appending a separately stored throwable once. */
+public fun formatLogEntries(entries: List<LogEntry>): String {
   val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
   return entries.joinToString("\n\n") { entry ->
     buildString {
@@ -41,14 +44,37 @@ fun formatLogEntries(entries: List<LogEntry>): String {
       }
       append('\n')
       append(entry.message)
+      entry.throwableStackTrace?.let {
+        if (entry.message.isNotEmpty()) append('\n')
+        append(it)
+      }
     }
   }
 }
 
-data class StatusMessage(val title: String, val detail: String, val isProblem: Boolean)
+internal fun formatElapsedTime(previousMillis: Long?, currentMillis: Long): String? {
+  if (previousMillis == null || currentMillis < previousMillis) return null
+  val elapsed = currentMillis - previousMillis
+  return when {
+    elapsed < 1_000 -> "+$elapsed ms"
+    elapsed < 60_000 -> "+${elapsed / 1_000}s"
+    elapsed < 3_600_000 -> "+${elapsed / 60_000}m"
+    elapsed < 86_400_000 -> "+${elapsed / 3_600_000}h"
+    else -> "+${elapsed / 86_400_000}d"
+  }
+}
+
+internal fun formatSessionDate(timestamp: Long): String =
+  SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestamp))
+
+public data class StatusMessage(
+  public val title: String,
+  public val detail: String,
+  public val isProblem: Boolean,
+)
 
 /** Pure status rules shared by the UI and tests. */
-fun statusMessages(capabilities: LogCapabilities, health: LogHealth): List<StatusMessage> =
+public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): List<StatusMessage> =
   buildList {
     if (health.installed == false) {
       add(
@@ -99,12 +125,21 @@ fun statusMessages(capabilities: LogCapabilities, health: LogHealth): List<Statu
     health.writeError?.let {
       add(StatusMessage("Persistent writes failed", "$it. In-memory capture continues.", true))
     }
+    if (health.startupEntriesDropped) {
+      add(
+        StatusMessage(
+          "Startup logs were dropped",
+          "The startup buffer filled before storage was ready; some earlier entries were not persisted.",
+          true,
+        )
+      )
+    }
     if (capabilities.persistsAcrossCrashes && health.writeError == null) {
       add(
         StatusMessage(
           "Crash persistence configured",
           if (capabilities.isLibraryCapture)
-            "The library writes each accepted entry to app-private storage before Timber returns."
+            "The library buffers early entries, then writes later entries to app-private storage before Timber returns."
           else "Persistence is declared by the host app and cannot be verified by this viewer.",
           false,
         )
