@@ -42,7 +42,7 @@ jobs:
         run: ./gradlew :sample:test
 
       - name: Lint library and sample variants
-        run: ./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease
+        run: ./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease :sample:lintR8
 
       - name: Upload lint reports on failure
         if: failure()
@@ -58,4 +58,13 @@ jobs:
           retention-days: 7
 
       - name: Build sample variants
-        run: ./gradlew :sample:assembleDebug :sample:assembleRelease
+        run: ./gradlew :sample:assembleDebug :sample:assembleRelease :sample:assembleR8 :r8test:assembleR8 :sample:analyzeR8R8Config
+
+      - name: Upload R8 analysis reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: r8-reports
+          path: sample/build/reports/r8/
+          if-no-files-found: ignore
+          retention-days: 7

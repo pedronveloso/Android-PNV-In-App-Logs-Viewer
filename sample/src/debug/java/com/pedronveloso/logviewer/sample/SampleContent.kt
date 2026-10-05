@@ -47,7 +47,7 @@ fun SampleContent(modifier: Modifier = Modifier) {
       onScenarioChange = { scenario = it },
       onGenerateLogs = {
         val batch = ++count
-        Timber.tag("Sample").d("Generated message %d token=sample-secret", batch)
+        Timber.tag("Sample").d("Generated message %d access_token=sample-secret", batch)
         Timber.tag("Sample").w("Generated warning %d: slow response", batch)
         Timber.tag("Sample\$generateLogs")
           .e(
