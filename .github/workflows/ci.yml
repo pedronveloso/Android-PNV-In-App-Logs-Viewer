@@ -66,5 +66,5 @@ jobs:
         with:
           name: r8-reports
           path: sample/build/reports/r8/
-          if-no-files-found: ignore
+          if-no-files-found: warn
           retention-days: 7

@@ -10,6 +10,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.util.regex.Pattern
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,11 +44,13 @@ class R8IntegrationTest {
     find(By.text("Generated message 1 access_token=<redacted>"))
     find(By.text("Generated warning 1: slow response"))
 
-    find(By.clazz("android.widget.EditText")).apply {
-      click()
-      text = "request failed"
-    }
-    device.pressBack() // Dismiss the keyboard before interacting with the filter row.
+    // ACTION_SET_TEXT updates the unfocused field without opening the keyboard.
+    find(By.clazz("android.widget.EditText")).text = "request failed"
+    assertEquals(
+      "request failed",
+      find(By.clazz("android.widget.EditText").text("request failed")).text,
+    )
+    find(By.desc("Share visible logs")) // The viewer must remain open after entering the query.
     find(By.text("Generated error 1: request failed"))
     assertTrue(device.wait(Until.gone(By.textContains("Generated message")), TIMEOUT))
     assertTrue(device.wait(Until.gone(By.textContains("Generated warning")), TIMEOUT))
