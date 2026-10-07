@@ -42,8 +42,10 @@ Before calling any piece of work complete:
    because that line documents the tested combination.
 2. Run `./gradlew spotlessApply`, then `./gradlew spotlessCheck`. Review the formatting changes.
 3. Run the library unit tests with `./gradlew :logviewer:testDebugUnitTest`.
-4. Run Android lint, including Compose lint, for both variants of both modules:
-   `./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease`.
+4. Run Android lint, including Compose lint, for library debug/release and sample debug/release/R8:
+   `./gradlew :logviewer:lintDebug :logviewer:lintRelease :sample:lintDebug :sample:lintRelease :sample:lintR8`.
+   AGP's `com.android.test` plugin provides no lint task for `:r8test`; review its code and
+   manifest directly when changing the integration test app.
 5. Fix failures and rerun the affected checks. Avoid broad lint suppressions or baselines; use a
    narrow suppression only for a demonstrated false positive.
 

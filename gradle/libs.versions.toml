@@ -13,6 +13,7 @@ androidxTest = "1.7.0"
 androidxJunit = "1.3.0"
 androidxRunner = "1.7.0"
 espresso = "3.7.0"
+uiAutomator = "2.4.0"
 spotless = "8.10.3"
 composeLints = "1.6.0"
 mavenPublish = "0.37.0"
@@ -38,11 +39,13 @@ androidxTestCore = { module = "androidx.test:core", version.ref = "androidxTest"
 androidxJunit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
 androidxRunner = { module = "androidx.test:runner", version.ref = "androidxRunner" }
 espressoCore = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+uiAutomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiAutomator" }
 composeLints = { module = "com.slack.lint.compose:compose-lint-checks", version.ref = "composeLints" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-test = { id = "com.android.test", version.ref = "agp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }

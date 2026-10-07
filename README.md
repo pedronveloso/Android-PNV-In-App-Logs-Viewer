@@ -114,3 +114,5 @@ install and launch the debug sample. Generate logs, open Logs, and use search, s
 Follow, copy, share, and Status. Tap **Crash app to test recovery**, relaunch the sample, open
 Logs, and select the previous session. The sample's release variant contains no viewer dependency
 or viewer screen.
+
+For R8 integration coverage, see [Testing the optimized sample](docs/r8-testing.md).

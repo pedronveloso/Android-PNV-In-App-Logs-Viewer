@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "pnv-in-app-logs-viewer"
 
-include(":logviewer", ":sample")
+include(":logviewer", ":sample", ":r8test")
