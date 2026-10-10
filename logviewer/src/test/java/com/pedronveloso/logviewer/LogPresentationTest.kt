@@ -43,6 +43,15 @@ class LogPresentationTest {
   }
 
   @Test
+  fun `break anywhere adds zero width breaks without altering visible text`() {
+    val broken = breakAnywhere("ab\ncd😀")
+    assertThat(broken.replace("\u200B", "")).isEqualTo("ab\ncd😀")
+    assertThat(broken).startsWith("a\u200Bb\u200B\nc\u200Bd\u200B")
+    assertThat(broken).doesNotContain("\n\u200B")
+    assertThat(broken).doesNotContain("\uD83D\u200B")
+  }
+
+  @Test
   fun `export includes separate throwable once and preserves legacy messages`() {
     val trace = "java.lang.IllegalStateException: boom\n at Sample.run(Sample.kt:1)"
     val newEntry = entry.copy(message = "Failed", throwableStackTrace = trace)

@@ -92,6 +92,11 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
   var refresh by remember { mutableIntStateOf(0) }
   var error by remember { mutableStateOf<String?>(null) }
   var selectedEntry by remember(source) { mutableStateOf<LogEntry?>(null) }
+  val preferences = remember(context) { LogViewerPreferences(context) }
+  var wrapLines by remember { mutableStateOf(false) }
+  LaunchedEffect(preferences) {
+    wrapLines = withContext(Dispatchers.IO) { preferences.wrapLongLines }
+  }
   val listState = rememberLazyListState()
   val isDragged by listState.interactionSource.collectIsDraggedAsState()
   val filtered = remember(allEntries, filter) { allEntries.filter { it.matches(filter) } }
@@ -229,6 +234,11 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
   selectedEntry?.let { entry ->
     LogDetailsSheet(
       entry = entry,
+      wrapLines = wrapLines,
+      onWrapLinesChange = {
+        wrapLines = it
+        preferences.wrapLongLines = it
+      },
       onDismiss = { selectedEntry = null },
       onFilterLikeThis = {
         filter = filter.copy(query = entry.tag.orEmpty())

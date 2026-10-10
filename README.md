@@ -92,6 +92,8 @@ every sensitive value, so avoid logging secrets and supply an app-specific callb
 The callback should be fast and must not log through Timber, which would recurse. If it throws,
 the affected field is replaced with `<redaction failed>`. Share uses captured entries;
 sharing is a user action through an app-private temporary file and a non-exported `FileProvider`.
+The viewer also remembers one UI preference, whether long lines wrap in the details sheet, in a
+private `SharedPreferences` file named `pnv_logviewer`; it never stores log content there.
 
 ## Use an existing store
 
