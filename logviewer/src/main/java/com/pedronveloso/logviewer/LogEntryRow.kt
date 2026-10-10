@@ -61,11 +61,7 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
       )
       Spacer(Modifier.width(8.dp))
       Text(
-        styledTag(
-          entry.tag.orEmpty(),
-          MaterialTheme.colorScheme.primary,
-          MaterialTheme.colorScheme.tertiary,
-        ),
+        styledTag(entry.tag.orEmpty()),
         style = MaterialTheme.typography.labelMedium,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
@@ -101,13 +97,13 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
   }
 }
 
-internal fun styledTag(tag: String, classColor: Color, methodColor: Color): AnnotatedString {
+internal fun styledTag(tag: String): AnnotatedString {
   val divider = tag.lastIndexOf('$')
   if (divider <= 0 || divider == tag.lastIndex) return AnnotatedString(tag)
   return buildAnnotatedString {
-    withStyle(SpanStyle(color = classColor)) { append(tag.substring(0, divider)) }
-    append('$')
-    withStyle(SpanStyle(color = methodColor)) { append(tag.substring(divider + 1)) }
+    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(tag.substring(0, divider)) }
+    append("$\n")
+    append(tag.substring(divider + 1))
   }
 }
 
@@ -124,11 +120,7 @@ internal fun LogDetailsSheet(entry: LogEntry, onDismiss: () -> Unit, onFilterLik
     ) {
       Text("Log details", style = MaterialTheme.typography.titleLarge)
       Text(
-        styledTag(
-          entry.tag ?: "(no tag)",
-          MaterialTheme.colorScheme.primary,
-          MaterialTheme.colorScheme.tertiary,
-        ),
+        styledTag(entry.tag ?: "(no tag)"),
         style = MaterialTheme.typography.titleMedium,
       )
       Text(

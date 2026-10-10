@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -57,8 +56,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -85,7 +82,6 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
   val effectiveCapabilities = capabilities.copy(hasLiveUpdates = liveUpdates)
   val health by source.health.collectAsState()
   val context = LocalContext.current
-  val clipboard = LocalClipboard.current
   val scope = rememberCoroutineScope()
   var tab by remember { mutableIntStateOf(0) }
   var sessions by remember(source) { mutableStateOf<List<LogSession>>(emptyList()) }
@@ -153,14 +149,8 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
         showActions = tab == 0,
         canClear = capabilities.canClear && selectedSession != null,
         onBack = onBack,
+        canRefresh = !liveUpdates,
         onRefresh = { refresh++ },
-        onCopy = {
-          scope.launch {
-            clipboard.setClipEntry(
-              ClipEntry(ClipData.newPlainText("logs", formatLogEntries(filtered)))
-            )
-          }
-        },
         onShare = {
           runCatching { shareLogs(context, formatLogEntries(filtered)) }
             .onFailure { error = it.message ?: "Could not share logs" }
@@ -253,9 +243,9 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
 private fun LogViewerTopBar(
   showActions: Boolean,
   canClear: Boolean,
+  canRefresh: Boolean,
   onBack: () -> Unit,
   onRefresh: () -> Unit,
-  onCopy: () -> Unit,
   onShare: () -> Unit,
   onClear: () -> Unit,
 ) {
@@ -271,18 +261,14 @@ private fun LogViewerTopBar(
     },
     actions = {
       if (showActions) {
-        IconButton(
-          onClick = onRefresh,
-          modifier =
-            Modifier.testTag("refresh_logs").semantics { contentDescription = "Refresh logs" },
-        ) {
-          Icon(Icons.Default.Refresh, contentDescription = null)
-        }
-        IconButton(
-          onClick = onCopy,
-          modifier = Modifier.semantics { contentDescription = "Copy visible logs" },
-        ) {
-          Icon(Icons.Default.ContentCopy, contentDescription = null)
+        if (canRefresh) {
+          IconButton(
+            onClick = onRefresh,
+            modifier =
+              Modifier.testTag("refresh_logs").semantics { contentDescription = "Refresh logs" },
+          ) {
+            Icon(Icons.Default.Refresh, contentDescription = null)
+          }
         }
         IconButton(
           onClick = onShare,
@@ -490,9 +476,9 @@ private fun LogViewerTopBarPreview() {
       LogViewerTopBar(
         showActions = true,
         canClear = true,
+        canRefresh = true,
         onBack = {},
         onRefresh = {},
-        onCopy = {},
         onShare = {},
         onClear = {},
       )

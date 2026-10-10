@@ -187,14 +187,14 @@ class LogViewerTest {
       (0 until 99).map {
         LogEntry(it.toLong(), "current", 0, Log.WARN, "Batch", "Warning $it")
       } + LogEntry(100, "current", 0, Log.ERROR, "Batch", "Error")
-    compose.onNodeWithTag("refresh_logs").performClick()
+    source.notifyChanged()
     compose.waitUntil(3_000) {
       compose.onAllNodesWithText("W 99", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("E 1", useUnmergedTree = true).assertExists()
 
     source.records = source.records + LogEntry(101, "current", 0, Log.WARN, "Batch", "More")
-    compose.onNodeWithTag("refresh_logs").performClick()
+    source.notifyChanged()
     compose.waitUntil(3_000) {
       compose.onAllNodesWithText("W 99+", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
@@ -221,8 +221,6 @@ class LogViewerTest {
     }
     listOf(
         "Go back",
-        "Refresh logs",
-        "Copy visible logs",
         "Share visible logs",
         "Clear logs in selected session",
         "Show logs",
@@ -232,6 +230,8 @@ class LogViewerTest {
         "Follow new logs and scroll to the newest entry",
       )
       .forEach { compose.onNodeWithContentDescription(it).assertExists() }
+    compose.onNodeWithContentDescription("Refresh logs").assertDoesNotExist()
+    compose.onNodeWithContentDescription("Copy visible logs").assertDoesNotExist()
     compose
       .onNodeWithTag("follow_logs")
       .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "On"))
@@ -241,12 +241,29 @@ class LogViewerTest {
       .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Off"))
   }
 
+  @Test
+  fun refreshIsOfferedOnlyWithoutLiveUpdates() {
+    val source = FakeSource()
+    source.changeFlow = null
+    source.capabilityState.value = LogCapabilities(true, false, false, true)
+    source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.onNodeWithContentDescription("Refresh logs").assertExists()
+  }
+
   private class FakeSource : LogSource {
     var records: List<LogEntry> = emptyList()
     var sessionList = listOf(LogSession("current", 0, true))
     val recordsBySession = mutableMapOf<String, List<LogEntry>>()
     private val events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    override val changes: Flow<Unit> = events
+    var changeFlow: Flow<Unit>? = events
+    override val changes: Flow<Unit>?
+      get() = changeFlow
+
+    fun notifyChanged() {
+      events.tryEmit(Unit)
+    }
+
     val capabilityState = MutableStateFlow(LogCapabilities(true, false, true, true))
     override val capabilities: StateFlow<LogCapabilities> = capabilityState
     override val health: StateFlow<LogHealth> = MutableStateFlow(LogHealth(installed = true))
