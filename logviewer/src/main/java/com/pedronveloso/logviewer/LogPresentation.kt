@@ -82,7 +82,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "Capture is not installed",
           "Call capture.install() during app startup.",
           true,
-        )
+        ),
       )
     }
     if (!capabilities.hasInMemoryLogs && !capabilities.persistsAcrossCrashes) {
@@ -91,7 +91,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "No log source configured",
           "Connect an in-memory or persistent Timber log source.",
           true,
-        )
+        ),
       )
     }
     if (capabilities.hasInMemoryLogs && !capabilities.persistsAcrossCrashes) {
@@ -100,7 +100,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "Logs live only in memory",
           "Enable persistent capture to keep logs after a crash or process restart.",
           true,
-        )
+        ),
       )
     }
     if (!capabilities.hasLiveUpdates) {
@@ -109,7 +109,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "Live updates unavailable",
           "Provide a change flow to enable Follow; use Refresh until then.",
           true,
-        )
+        ),
       )
     }
     if (!capabilities.redactionConfigured) {
@@ -118,7 +118,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "Redaction is not configured",
           "Redact sensitive values before logs are stored or shared.",
           true,
-        )
+        ),
       )
     }
     health.readError?.let { add(StatusMessage("Reading logs failed", it, true)) }
@@ -131,7 +131,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "Startup logs were dropped",
           "The startup buffer filled before storage was ready; some earlier entries were not persisted.",
           true,
-        )
+        ),
       )
     }
     if (capabilities.persistsAcrossCrashes && health.writeError == null) {
@@ -142,7 +142,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
             "The library buffers early entries, then writes later entries to app-private storage before Timber returns."
           else "Persistence is declared by the host app and cannot be verified by this viewer.",
           false,
-        )
+        ),
       )
     }
     if (capabilities.hasLiveUpdates) {
@@ -151,7 +151,7 @@ public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): Lis
           "Live updates available",
           "Follow can track new entries while this screen is open.",
           false,
-        )
+        ),
       )
     }
   }

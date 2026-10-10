@@ -30,7 +30,7 @@ class LogViewerExportTest {
     assertThat(uri.authority).isEqualTo("${context.packageName}.pnvlogviewer.fileprovider")
     assertThat(send.clipData!!.getItemAt(0).uri).isEqualTo(uri)
     assertThat(
-        context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
+        context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() },
       )
       .isEqualTo("redacted log")
   }

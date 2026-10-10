@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -50,7 +53,7 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
       .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
       .clickable(onClickLabel = "Show log details", onClick = onClick)
       .testTag("log_entry_${entry.id}")
-      .padding(10.dp)
+      .padding(10.dp),
   ) {
     Row(verticalAlignment = Alignment.Top) {
       Text(
@@ -61,11 +64,7 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
       )
       Spacer(Modifier.width(8.dp))
       Text(
-        styledTag(
-          entry.tag.orEmpty(),
-          MaterialTheme.colorScheme.primary,
-          MaterialTheme.colorScheme.tertiary,
-        ),
+        styledTag(entry.tag.orEmpty()),
         style = MaterialTheme.typography.labelMedium,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
@@ -101,19 +100,25 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
   }
 }
 
-internal fun styledTag(tag: String, classColor: Color, methodColor: Color): AnnotatedString {
+internal fun styledTag(tag: String): AnnotatedString {
   val divider = tag.lastIndexOf('$')
   if (divider <= 0 || divider == tag.lastIndex) return AnnotatedString(tag)
   return buildAnnotatedString {
-    withStyle(SpanStyle(color = classColor)) { append(tag.substring(0, divider)) }
-    append('$')
-    withStyle(SpanStyle(color = methodColor)) { append(tag.substring(divider + 1)) }
+    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(tag.substring(0, divider)) }
+    append("$\n")
+    append(tag.substring(divider + 1))
   }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun LogDetailsSheet(entry: LogEntry, onDismiss: () -> Unit, onFilterLikeThis: () -> Unit) {
+internal fun LogDetailsSheet(
+  entry: LogEntry,
+  wrapLines: Boolean,
+  onWrapLinesChange: (Boolean) -> Unit,
+  onDismiss: () -> Unit,
+  onFilterLikeThis: () -> Unit,
+) {
   ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("log_details_sheet")) {
     Column(
       Modifier.fillMaxWidth()
@@ -124,11 +129,7 @@ internal fun LogDetailsSheet(entry: LogEntry, onDismiss: () -> Unit, onFilterLik
     ) {
       Text("Log details", style = MaterialTheme.typography.titleLarge)
       Text(
-        styledTag(
-          entry.tag ?: "(no tag)",
-          MaterialTheme.colorScheme.primary,
-          MaterialTheme.colorScheme.tertiary,
-        ),
+        styledTag(entry.tag ?: "(no tag)"),
         style = MaterialTheme.typography.titleMedium,
       )
       Text(
@@ -142,15 +143,36 @@ internal fun LogDetailsSheet(entry: LogEntry, onDismiss: () -> Unit, onFilterLik
       ) {
         Text("Filter logs like this")
       }
+      if (entry.message.isNotEmpty() || entry.throwableStackTrace != null) {
+        Row(
+          Modifier.fillMaxWidth()
+            .toggleable(
+              value = wrapLines,
+              role = Role.Switch,
+              onValueChange = onWrapLinesChange,
+            )
+            .testTag("wrap_lines_toggle"),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+          Text("Wrap long lines", style = MaterialTheme.typography.labelLarge)
+          Switch(checked = wrapLines, onCheckedChange = null)
+        }
+      }
       if (entry.message.isNotEmpty()) {
-        Text(
+        WrappableText(
           entry.message,
           style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+          wrap = wrapLines,
         )
       }
       entry.throwableStackTrace?.let {
         Text("Throwable", style = MaterialTheme.typography.titleSmall)
-        Text(it, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+        WrappableText(
+          it,
+          style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+          wrap = wrapLines,
+        )
       }
     }
   }
