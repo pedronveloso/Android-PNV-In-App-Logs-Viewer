@@ -343,7 +343,7 @@ private fun SessionSelector(
     ) {
       Text(
         if (selected?.isCurrent == true) "Current session ▾"
-        else "Previous session: ${selected?.startedAtMillis?.let(::formatSessionDate).orEmpty()} ▾"
+        else "Previous session: ${selected?.startedAtMillis?.let(::formatSessionDate).orEmpty()} ▾",
       )
     }
     DropdownMenu(expanded = sessionMenu, onDismissRequest = { sessionMenu = false }) {
@@ -358,7 +358,7 @@ private fun SessionSelector(
           text = {
             Text(
               if (session.isCurrent) "Current session"
-              else formatSessionDate(session.startedAtMillis)
+              else formatSessionDate(session.startedAtMillis),
             )
           },
           onClick = {
@@ -472,7 +472,7 @@ private fun LogEmptyState(noEntries: Boolean) {
 @Composable
 internal fun LogViewerPreviewTheme(content: @Composable () -> Unit) {
   MaterialTheme(
-    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
   ) {
     Surface(color = MaterialTheme.colorScheme.background) { content() }
   }

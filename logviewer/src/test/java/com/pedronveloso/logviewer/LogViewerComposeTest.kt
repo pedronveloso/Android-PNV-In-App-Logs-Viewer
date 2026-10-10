@@ -98,7 +98,7 @@ class LogViewerComposeTest {
 
     override suspend fun entries(sessionId: String) =
       listOf(
-        LogEntry(0, sessionId, 0, Log.ERROR, "Worker", "Failed", "IllegalStateException: boom")
+        LogEntry(0, sessionId, 0, Log.ERROR, "Worker", "Failed", "IllegalStateException: boom"),
       )
 
     override suspend fun clear(sessionId: String) = Unit

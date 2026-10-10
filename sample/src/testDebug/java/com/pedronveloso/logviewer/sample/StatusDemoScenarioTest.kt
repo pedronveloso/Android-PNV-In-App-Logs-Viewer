@@ -41,7 +41,7 @@ class StatusDemoScenarioTest {
             StatusDemoScenario.APP_PROVIDED.health(capture.health.value),
           )
           .single { it.title == "Crash persistence configured" }
-          .detail
+          .detail,
       )
       .contains("declared by the host app")
   }

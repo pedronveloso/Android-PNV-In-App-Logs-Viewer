@@ -122,7 +122,7 @@ class LogViewerTest {
     compose.onNodeWithTag("status_tab").performClick()
     compose
       .onNodeWithText(
-        "Persistence is declared by the host app and cannot be verified by this viewer."
+        "Persistence is declared by the host app and cannot be verified by this viewer.",
       )
       .assertExists()
     compose.onNodeWithText("Live updates unavailable").assertExists()

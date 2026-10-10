@@ -512,7 +512,7 @@ class TimberLogCaptureTest {
     val current = TimberLogCapture(context, persistAcrossCrashes = true, clock = { 5000L })
     assertThat(current.sessions()).hasSize(3)
     assertThat(
-        directory.listFiles().orEmpty().filter { it.name.endsWith(".0") || it.name.endsWith(".1") }
+        directory.listFiles().orEmpty().filter { it.name.endsWith(".0") || it.name.endsWith(".1") },
       )
       .hasSize(5)
     assertThat(directory.listFiles().orEmpty().all { it.length() <= 1024 * 1024 }).isTrue()

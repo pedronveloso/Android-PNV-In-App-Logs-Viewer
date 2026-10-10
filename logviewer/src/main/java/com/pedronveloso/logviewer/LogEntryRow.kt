@@ -53,7 +53,7 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
       .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(8.dp))
       .clickable(onClickLabel = "Show log details", onClick = onClick)
       .testTag("log_entry_${entry.id}")
-      .padding(10.dp)
+      .padding(10.dp),
   ) {
     Row(verticalAlignment = Alignment.Top) {
       Text(

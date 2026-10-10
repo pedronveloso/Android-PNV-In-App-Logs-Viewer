@@ -81,12 +81,12 @@ class LogPresentationTest {
     assertThat(
         statusMessages(capabilities, LogHealth())
           .single { it.title == "Crash persistence configured" }
-          .detail
+          .detail,
       )
       .contains("declared by the host app")
     assertThat(
         statusMessages(capabilities, LogHealth(writeError = "Storage full"))
-          .map(StatusMessage::title)
+          .map(StatusMessage::title),
       )
       .contains("Persistent writes failed")
   }
