@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import java.text.BreakIterator
 
 private val WrapMarkerSize = 14.dp
 private val WrapMarkerGap = 4.dp
@@ -77,9 +78,8 @@ internal fun WrappableText(
           val x = -(WrapMarkerSize + WrapMarkerGap).toPx()
           // Mark each line that continues a soft-wrapped one. A hard newline already reads as a
           // line break, so those lines get no marker.
-          for (line in 1 until result.lineCount) {
-            val previousEnd = result.getLineEnd(line - 1)
-            if (previousEnd > 0 && breakable[previousEnd - 1] == '\n') continue
+          val lineEnds = List(result.lineCount, result::getLineEnd)
+          for (line in continuationLines(breakable, lineEnds)) {
             val y = (result.getLineTop(line) + result.getLineBottom(line)) / 2f - size / 2f
             translate(x, y) {
               scale(scaleX = -1f, scaleY = 1f, pivot = Offset(size / 2f, size / 2f)) {
@@ -93,13 +93,32 @@ internal fun WrappableText(
 
 private const val ZERO_WIDTH_SPACE = '\u200B'
 
-/** Inserts a zero-width break opportunity after each character, leaving surrogate pairs whole. */
+/**
+ * Inserts a zero-width break opportunity between user-perceived characters, so base characters stay
+ * with their combining marks and surrogate pairs stay whole.
+ */
 internal fun breakAnywhere(text: String): String =
   buildString(text.length * 2) {
-    text.forEach {
-      append(it)
-      if (it != '\n' && !it.isHighSurrogate()) append(ZERO_WIDTH_SPACE)
+    val iterator = BreakIterator.getCharacterInstance()
+    iterator.setText(text)
+    var start = iterator.first()
+    var end = iterator.next()
+    while (end != BreakIterator.DONE) {
+      append(text, start, end)
+      if (text[end - 1] != '\n') append(ZERO_WIDTH_SPACE)
+      start = end
+      end = iterator.next()
     }
+  }
+
+/**
+ * Returns the indices of lines that continue a soft-wrapped line. A line following a hard newline
+ * already reads as a line break, so it is not included. [lineEnds] holds each line's end offset.
+ */
+internal fun continuationLines(text: String, lineEnds: List<Int>): List<Int> =
+  (1 until lineEnds.size).filter { line ->
+    val previousEnd = lineEnds[line - 1]
+    previousEnd <= 0 || text[previousEnd - 1] != '\n'
   }
 
 /** Stores viewer UI preferences only; never log content. */

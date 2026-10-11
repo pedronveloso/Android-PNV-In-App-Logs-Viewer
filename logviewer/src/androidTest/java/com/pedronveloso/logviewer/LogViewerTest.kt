@@ -1,7 +1,13 @@
 package com.pedronveloso.logviewer
 
 import android.util.Log
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -16,10 +22,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -246,6 +255,33 @@ class LogViewerTest {
     val source = FakeSource()
     source.changeFlow = null
     source.capabilityState.value = LogCapabilities(true, false, false, true)
+    source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
+    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.onNodeWithContentDescription("Refresh logs").assertExists()
+  }
+
+  @Test
+  fun wrappableTextOnlyWrapsWhenEnabled() {
+    // Needs real font metrics, so it lives here rather than in the Robolectric tests.
+    val text = "java.lang.IllegalStateException: " + "boom".repeat(200)
+    var wrap by mutableStateOf(false)
+    compose.setContent {
+      MaterialTheme {
+        Box(Modifier.width(200.dp)) { WrappableText(text, TextStyle.Default, wrap = wrap) }
+      }
+    }
+    val unwrapped = compose.onNodeWithText(text).fetchSemanticsNode().size.height
+    wrap = true
+    compose.waitForIdle()
+    val wrapped = compose.onNodeWithText(text).fetchSemanticsNode().size.height
+    assertTrue("wrapped $wrapped should exceed unwrapped $unwrapped", wrapped > unwrapped)
+  }
+
+  @Test
+  fun refreshIsOfferedWhenChangesFlowIsNullEvenIfLiveUpdatesClaimed() {
+    val source = FakeSource()
+    source.changeFlow = null
+    source.capabilityState.value = LogCapabilities(true, false, true, true)
     source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
     compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
     compose.onNodeWithContentDescription("Refresh logs").assertExists()

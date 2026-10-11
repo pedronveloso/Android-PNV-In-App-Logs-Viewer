@@ -52,6 +52,22 @@ class LogPresentationTest {
   }
 
   @Test
+  fun `break anywhere keeps combining marks with their base`() {
+    val broken = breakAnywhere("e\u0301x")
+    assertThat(broken).isEqualTo("e\u0301\u200Bx\u200B")
+    assertThat(breakAnywhere("")).isEmpty()
+  }
+
+  @Test
+  fun `continuation lines skip lines that follow a hard newline`() {
+    // "abcd" wraps to "ab" + "cd", then a hard newline, then "ef".
+    val text = "ab\u200Bcd\n\u200Bef"
+    val lineEnds = listOf(2, text.indexOf('\n') + 1, text.length)
+    assertThat(continuationLines(text, lineEnds)).containsExactly(1)
+    assertThat(continuationLines("abc", listOf(3))).isEmpty()
+  }
+
+  @Test
   fun `export includes separate throwable once and preserves legacy messages`() {
     val trace = "java.lang.IllegalStateException: boom\n at Sample.run(Sample.kt:1)"
     val newEntry = entry.copy(message = "Failed", throwableStackTrace = trace)

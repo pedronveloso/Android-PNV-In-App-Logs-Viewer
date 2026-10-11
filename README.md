@@ -5,7 +5,7 @@ from an app-provided `LogSource`. The library has no automatic initializer: addi
 alone does not plant a tree or collect logs.
 
 The repository has a `:logviewer` Android library and a `:sample` app. It uses AGP 9.4.1, Kotlin
-2.4.20, Compose BOM 2026.09.00, Java 17 bytecode, and minSdk 26.
+2.4.21, Compose BOM 2026.09.00, Java 17 bytecode, and minSdk 26.
 
 ## Include in a host app
 
