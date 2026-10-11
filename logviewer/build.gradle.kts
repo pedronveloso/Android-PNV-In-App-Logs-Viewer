@@ -10,7 +10,7 @@ plugins {
 
 group = "io.github.pedronveloso"
 
-version = "0.8.0"
+version = "0.9.0"
 
 kotlin { explicitApi() }
 
@@ -42,7 +42,7 @@ mavenPublishing {
       variant = "release",
       sourcesJar = SourcesJar.Sources(),
       javadocJar = JavadocJar.Empty(),
-    )
+    ),
   )
   publishToMavenCentral()
   signAllPublications()
@@ -70,7 +70,7 @@ mavenPublishing {
       url.set("https://github.com/pedronveloso/pnv-in-app-logs-viewer")
       connection.set("scm:git:https://github.com/pedronveloso/pnv-in-app-logs-viewer.git")
       developerConnection.set(
-        "scm:git:ssh://git@github.com/pedronveloso/pnv-in-app-logs-viewer.git"
+        "scm:git:ssh://git@github.com/pedronveloso/pnv-in-app-logs-viewer.git",
       )
     }
   }

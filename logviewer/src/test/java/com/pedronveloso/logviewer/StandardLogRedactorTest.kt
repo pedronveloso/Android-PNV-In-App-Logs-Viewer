@@ -32,12 +32,12 @@ class StandardLogRedactorTest {
   fun `redacts standalone credentials and multiple urls`() {
     val result =
       StandardLogRedactor.redact(
-        "Basic dXNlcjpwYXNz from https://old.example/path to https://new.example/?token=abc"
+        "Basic dXNlcjpwYXNz from https://old.example/path to https://new.example/?token=abc",
       )
 
     assertThat(result)
       .isEqualTo(
-        "Basic <redacted> from https://old.example/<redacted> to https://new.example/<redacted>"
+        "Basic <redacted> from https://old.example/<redacted> to https://new.example/<redacted>",
       )
   }
 

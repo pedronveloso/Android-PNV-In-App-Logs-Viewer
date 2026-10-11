@@ -1,13 +1,21 @@
 package com.pedronveloso.logviewer
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ApplicationProvider
+import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +44,41 @@ class LogViewerComposeTest {
   }
 
   @Test
+  fun wrapToggleDefaultsOffAndPersists() {
+    val prefs = prefs()
+    prefs.edit().clear().commit()
+    openDetails()
+    compose.onNodeWithTag("wrap_lines_toggle").assertIsOff()
+    compose.onNodeWithTag("wrap_lines_toggle").performClick()
+    compose.onNodeWithTag("wrap_lines_toggle").assertIsOn()
+    assertThat(prefs.getBoolean(LogViewerPreferences.KEY_WRAP, false)).isTrue()
+  }
+
+  @Test
+  fun storedWrapPreferenceIsRestored() {
+    prefs().edit().putBoolean(LogViewerPreferences.KEY_WRAP, true).commit()
+    openDetails()
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag("wrap_lines_toggle").fetchSemanticsNodes().any {
+        SemanticsProperties.ToggleableState in it.config &&
+          it.config[SemanticsProperties.ToggleableState] == ToggleableState.On
+      }
+    }
+  }
+
+  private fun prefs() =
+    ApplicationProvider.getApplicationContext<Context>()
+      .getSharedPreferences(LogViewerPreferences.FILE, Context.MODE_PRIVATE)
+
+  private fun openDetails() {
+    compose.setContent { MaterialTheme { LogViewer(FakeSource(canClear = true), onBack = {}) } }
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("log_entry_0").performClick()
+  }
+
+  @Test
   fun readOnlySourceHidesClearControl() {
     val source = FakeSource(canClear = false)
     compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
@@ -55,7 +98,7 @@ class LogViewerComposeTest {
 
     override suspend fun entries(sessionId: String) =
       listOf(
-        LogEntry(0, sessionId, 0, Log.ERROR, "Worker", "Failed", "IllegalStateException: boom")
+        LogEntry(0, sessionId, 0, Log.ERROR, "Worker", "Failed", "IllegalStateException: boom"),
       )
 
     override suspend fun clear(sessionId: String) = Unit

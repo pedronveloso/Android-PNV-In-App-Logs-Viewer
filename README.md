@@ -5,7 +5,7 @@ from an app-provided `LogSource`. The library has no automatic initializer: addi
 alone does not plant a tree or collect logs.
 
 The repository has a `:logviewer` Android library and a `:sample` app. It uses AGP 9.4.1, Kotlin
-2.4.20, Compose BOM 2026.09.00, Java 17 bytecode, and minSdk 26.
+2.4.21, Compose BOM 2026.09.00, Java 17 bytecode, and minSdk 26.
 
 ## Include in a host app
 
@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.8.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.9.0")
 }
 ```
 
@@ -90,8 +90,10 @@ capture without a `redact` callback keeps text unchanged. The policy runs on mes
 stack traces, and tags before either memory or disk storage. Pattern matching cannot recognize
 every sensitive value, so avoid logging secrets and supply an app-specific callback if needed.
 The callback should be fast and must not log through Timber, which would recurse. If it throws,
-the affected field is replaced with `<redaction failed>`. Copy and share use captured entries;
+the affected field is replaced with `<redaction failed>`. Share uses captured entries;
 sharing is a user action through an app-private temporary file and a non-exported `FileProvider`.
+The viewer also remembers one UI preference, whether long lines wrap in the details sheet, in a
+private `SharedPreferences` file named `pnv_logviewer`; it never stores log content there.
 
 ## Use an existing store
 
@@ -111,7 +113,7 @@ The viewer uses the host's `MaterialTheme`; it does not depend on Lazulite or Al
 
 Run `./gradlew :logviewer:testDebugUnitTest :sample:assembleDebug :sample:assembleRelease`, then
 install and launch the debug sample. Generate logs, open Logs, and use search, severity chips,
-Follow, copy, share, and Status. Tap **Crash app to test recovery**, relaunch the sample, open
+Follow, share, and Status. Tap **Crash app to test recovery**, relaunch the sample, open
 Logs, and select the previous session. The sample's release variant contains no viewer dependency
 or viewer screen.
 

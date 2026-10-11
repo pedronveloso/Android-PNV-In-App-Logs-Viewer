@@ -109,7 +109,7 @@ class R8IntegrationTest {
     val context = instrumentation.context
     val intent = checkNotNull(context.packageManager.getLaunchIntentForPackage(APP))
     context.startActivity(
-      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
     )
     find(By.text("Generate logs"))
   }

@@ -76,7 +76,7 @@ internal constructor(
   override val changes: Flow<Unit> = revision.map {}
   private val mutableCapabilities =
     MutableStateFlow(
-      LogCapabilities(true, persistAcrossCrashes, true, redact != null, isLibraryCapture = true)
+      LogCapabilities(true, persistAcrossCrashes, true, redact != null, isLibraryCapture = true),
     )
   override val capabilities: StateFlow<LogCapabilities> = mutableCapabilities.asStateFlow()
   private val mutableHealth = MutableStateFlow(LogHealth(installed = false))

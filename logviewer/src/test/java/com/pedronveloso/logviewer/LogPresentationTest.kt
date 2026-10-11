@@ -1,7 +1,7 @@
 package com.pedronveloso.logviewer
 
 import android.util.Log
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -31,15 +31,40 @@ class LogPresentationTest {
   }
 
   @Test
-  fun `class and method keep full tag and have distinct colors`() {
-    val tag = styledTag("Outer\$Inner\$someFunction", Color.Red, Color.Blue)
-    assertThat(tag.text).isEqualTo("Outer\$Inner\$someFunction")
-    assertThat(tag.spanStyles).hasSize(2)
-    assertThat(tag.spanStyles[0].item.color).isEqualTo(Color.Red)
+  fun `class is bold and method follows the dollar sign on a new line`() {
+    val tag = styledTag("Outer\$Inner\$someFunction")
+    assertThat(tag.text).isEqualTo("Outer\$Inner\$\nsomeFunction")
+    assertThat(tag.spanStyles).hasSize(1)
+    assertThat(tag.spanStyles[0].item.fontWeight).isEqualTo(FontWeight.Bold)
+    assertThat(tag.spanStyles[0].start).isEqualTo(0)
     assertThat(tag.spanStyles[0].end).isEqualTo("Outer\$Inner".length)
-    assertThat(tag.spanStyles[1].item.color).isEqualTo(Color.Blue)
-    assertThat(tag.spanStyles[1].start).isEqualTo("Outer\$Inner\$".length)
-    assertThat(styledTag("PlainTag", Color.Red, Color.Blue).spanStyles).isEmpty()
+    assertThat(styledTag("PlainTag").spanStyles).isEmpty()
+    assertThat(styledTag("PlainTag").text).isEqualTo("PlainTag")
+  }
+
+  @Test
+  fun `break anywhere adds zero width breaks without altering visible text`() {
+    val broken = breakAnywhere("ab\ncd😀")
+    assertThat(broken.replace("\u200B", "")).isEqualTo("ab\ncd😀")
+    assertThat(broken).startsWith("a\u200Bb\u200B\nc\u200Bd\u200B")
+    assertThat(broken).doesNotContain("\n\u200B")
+    assertThat(broken).doesNotContain("\uD83D\u200B")
+  }
+
+  @Test
+  fun `break anywhere keeps combining marks with their base`() {
+    val broken = breakAnywhere("e\u0301x")
+    assertThat(broken).isEqualTo("e\u0301\u200Bx\u200B")
+    assertThat(breakAnywhere("")).isEmpty()
+  }
+
+  @Test
+  fun `continuation lines skip lines that follow a hard newline`() {
+    // "abcd" wraps to "ab" + "cd", then a hard newline, then "ef".
+    val text = "ab\u200Bcd\n\u200Bef"
+    val lineEnds = listOf(2, text.indexOf('\n') + 1, text.length)
+    assertThat(continuationLines(text, lineEnds)).containsExactly(1)
+    assertThat(continuationLines("abc", listOf(3))).isEmpty()
   }
 
   @Test
@@ -72,12 +97,12 @@ class LogPresentationTest {
     assertThat(
         statusMessages(capabilities, LogHealth())
           .single { it.title == "Crash persistence configured" }
-          .detail
+          .detail,
       )
       .contains("declared by the host app")
     assertThat(
         statusMessages(capabilities, LogHealth(writeError = "Storage full"))
-          .map(StatusMessage::title)
+          .map(StatusMessage::title),
       )
       .contains("Persistent writes failed")
   }

@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun SampleTheme(content: @Composable () -> Unit) {
   MaterialTheme(
-    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
   ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
       content()

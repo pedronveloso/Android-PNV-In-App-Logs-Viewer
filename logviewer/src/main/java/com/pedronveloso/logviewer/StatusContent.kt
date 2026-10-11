@@ -76,7 +76,7 @@ private fun StatusCard(message: StatusMessage) {
     modifier =
       Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
         stateDescription = if (message.isProblem) "Action needed" else "Healthy"
-      }
+      },
   ) {
     Column(Modifier.padding(16.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -101,7 +101,7 @@ private fun StatusCard(message: StatusMessage) {
 @Composable
 private fun StatusPreviewTheme(content: @Composable () -> Unit) {
   MaterialTheme(
-    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+    colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
   ) {
     Surface(color = MaterialTheme.colorScheme.background) { content() }
   }
