@@ -8,7 +8,9 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +18,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +45,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -51,6 +56,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -61,6 +68,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -83,15 +91,36 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
   val health by source.health.collectAsState()
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
-  var tab by remember { mutableIntStateOf(0) }
+  var tab by rememberSaveable { mutableIntStateOf(0) }
   var sessions by remember(source) { mutableStateOf<List<LogSession>>(emptyList()) }
-  var selectedSession by remember(source) { mutableStateOf<String?>(null) }
+  var selectedSession by rememberSaveable(source) { mutableStateOf<String?>(null) }
   var allEntries by remember(source) { mutableStateOf<List<LogEntry>>(emptyList()) }
-  var filter by remember { mutableStateOf(LogFilter()) }
-  var follow by remember(source) { mutableStateOf(true) }
+  var filter by
+    rememberSaveable(
+      stateSaver =
+        listSaver(
+          save = { listOf(it.minimumLevel.name, it.query) },
+          restore = { LogFilter(LogLevel.valueOf(it[0]), it[1]) },
+        ),
+    ) {
+      mutableStateOf(LogFilter())
+    }
+  var follow by rememberSaveable(source) { mutableStateOf(true) }
   var refresh by remember { mutableIntStateOf(0) }
   var error by remember { mutableStateOf<String?>(null) }
-  var selectedEntry by remember(source) { mutableStateOf<LogEntry?>(null) }
+  // Save selection identifiers rather than serializing log entries or traces.
+  var selectedEntryKey by
+    rememberSaveable(
+      source,
+      stateSaver =
+        listSaver<Pair<String, Long>?, Any>(
+          save = { key -> key?.let { listOf(it.first, it.second) }.orEmpty() },
+          restore = { if (it.isEmpty()) null else it[0] as String to it[1] as Long },
+        ),
+    ) {
+      mutableStateOf<Pair<String, Long>?>(null)
+    }
+  val selectedEntry = allEntries.firstOrNull { (it.sessionId to it.id) == selectedEntryKey }
   val preferences = remember(context) { LogViewerPreferences(context) }
   var wrapLines by remember { mutableStateOf(false) }
   LaunchedEffect(preferences) {
@@ -121,7 +150,13 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
       }
         .onSuccess { (available, chosen, entries) ->
           sessions = available
-          if (selectedSession != chosen) selectedSession = chosen
+          if (selectedSession != chosen) {
+            selectedSession = chosen
+            selectedEntryKey = null
+          }
+          if (entries.none { (it.sessionId to it.id) == selectedEntryKey }) {
+            selectedEntryKey = null
+          }
           allEntries = entries
           error = null
         }
@@ -143,56 +178,100 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
             follow = false
         }
   }
-  LaunchedEffect(selectedSession, allEntries.lastOrNull()?.id, follow) {
-    if (follow && filtered.isNotEmpty()) listState.animateScrollToItem(filtered.lastIndex)
+  LaunchedEffect(selectedSession, filtered.lastOrNull()?.id, follow, tab) {
+    if (tab == 0 && follow && filtered.isNotEmpty()) {
+      listState.animateScrollToItem(filtered.lastIndex)
+    }
   }
 
-  Scaffold(
-    modifier = modifier,
-    topBar = {
-      LogViewerTopBar(
-        showActions = tab == 0,
-        canClear = capabilities.canClear && selectedSession != null,
-        onBack = onBack,
-        canRefresh = !liveUpdates,
-        onRefresh = { refresh++ },
-        onShare = {
-          runCatching { shareLogs(context, formatLogEntries(filtered)) }
-            .onFailure { error = it.message ?: "Could not share logs" }
-        },
-        onClear = {
-          selectedSession?.let { sessionId ->
-            scope.launch {
-              runCatching { source.clear(sessionId) }
-                .onSuccess { refresh++ }
-                .onFailure { error = it.message ?: "Could not clear logs" }
+  BoxWithConstraints(modifier) {
+    val expanded = maxWidth >= 840.dp
+    val fullLevelNames = maxWidth >= 600.dp
+    val onWrapLinesChange: (Boolean) -> Unit = {
+      wrapLines = it
+      preferences.wrapLongLines = it
+    }
+    val onSelectEntry: (LogEntry) -> Unit = {
+      selectedEntryKey = it.sessionId to it.id
+      follow = false
+    }
+    Scaffold(
+      topBar = {
+        LogViewerTopBar(
+          showActions = tab == 0,
+          canClear = capabilities.canClear && selectedSession != null,
+          onBack = onBack,
+          canRefresh = !liveUpdates,
+          onRefresh = { refresh++ },
+          onShare = {
+            runCatching { shareLogs(context, formatLogEntries(filtered)) }
+              .onFailure { error = it.message ?: "Could not share logs" }
+          },
+          onClear = {
+            selectedSession?.let { sessionId ->
+              scope.launch {
+                runCatching { source.clear(sessionId) }
+                  .onSuccess {
+                    if (selectedEntryKey?.first == sessionId) selectedEntryKey = null
+                    refresh++
+                  }
+                  .onFailure { error = it.message ?: "Could not clear logs" }
+              }
             }
+          },
+          selectedTab = if (expanded) tab else null,
+          onSelectTab = { tab = it },
+        )
+      },
+    ) { padding ->
+      Column(Modifier.fillMaxSize().padding(padding)) {
+        if (!expanded) LogViewerTabs(selectedTab = tab, onSelectTab = { tab = it })
+        error?.let {
+          Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp))
+        }
+        if (tab == 1) {
+          StatusContent(effectiveCapabilities, health, Modifier.fillMaxSize())
+        } else {
+          val onSelectSession: (LogSession) -> Unit = {
+            if (selectedSession != it.id) {
+              selectedEntryKey = null
+              allEntries = emptyList()
+            }
+            selectedSession = it.id
+            follow = it.isCurrent
           }
-        },
-      )
-    },
-  ) { padding ->
-    Column(Modifier.fillMaxSize().padding(padding)) {
-      LogViewerTabs(selectedTab = tab, onSelectTab = { tab = it })
-      error?.let {
-        Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp))
-      }
-      if (tab == 1) {
-        StatusContent(effectiveCapabilities, health, Modifier.fillMaxSize())
-      } else {
-        Column(Modifier.fillMaxSize()) {
-          SessionSelector(
-            sessions = sessions,
-            selectedSessionId = selectedSession,
-            onSelectSession = {
-              selectedSession = it.id
-              follow = it.isCurrent
-            },
-          )
-          LogSearchField(
-            query = filter.query,
-            onQueryChange = { filter = filter.copy(query = it) },
-          )
+          if (expanded) {
+            Row(
+              Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              SessionSelector(
+                sessions,
+                selectedSession,
+                onSelectSession,
+                Modifier.widthIn(max = 240.dp),
+              )
+              LogSearchField(
+                filter.query,
+                { filter = filter.copy(query = it) },
+                Modifier.weight(1f),
+              )
+              FollowChip(follow, canFollow, { follow = it })
+            }
+          } else {
+            SessionSelector(
+              sessions,
+              selectedSession,
+              onSelectSession,
+              Modifier.padding(start = 16.dp, top = 8.dp),
+            )
+            LogSearchField(
+              filter.query,
+              { filter = filter.copy(query = it) },
+              Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            )
+          }
           LogFilterRow(
             selectedLevel = filter.minimumLevel,
             warningCount = warningCount,
@@ -201,50 +280,97 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
             canFollow = canFollow,
             onSelectLevel = { filter = filter.copy(minimumLevel = it) },
             onFollowChange = { follow = it },
+            fullLevelNames = fullLevelNames,
+            showFollow = !expanded,
           )
-          Text(
-            "${filtered.size} of ${allEntries.size} entries",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-          )
-          if (filtered.isEmpty()) {
-            LogEmptyState(noEntries = allEntries.isEmpty())
-          } else {
-            LazyColumn(
-              state = listState,
-              modifier = Modifier.fillMaxSize().testTag("log_list"),
-              contentPadding = PaddingValues(12.dp),
-              verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-              itemsIndexed(filtered, key = { _, entry -> "${entry.sessionId}:${entry.id}" }) {
-                index,
-                entry ->
-                LogRow(
-                  entry = entry,
-                  previousTimestamp = filtered.getOrNull(index - 1)?.timestampMillis,
-                  onClick = { selectedEntry = entry },
-                )
+          Row(Modifier.fillMaxWidth().weight(1f)) {
+            Column(if (expanded) Modifier.weight(0.56f) else Modifier.fillMaxWidth()) {
+              Text(
+                "${filtered.size} of ${allEntries.size} entries",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+              )
+              LogList(
+                entries = filtered,
+                noEntries = allEntries.isEmpty(),
+                listState = listState,
+                compact = expanded,
+                selectedEntryKey = selectedEntryKey,
+                onSelectEntry = onSelectEntry,
+              )
+            }
+            if (expanded) {
+              VerticalDivider()
+              val selectedIndex = filtered.indexOfFirst {
+                (it.sessionId to it.id) == selectedEntryKey
               }
+              LogDetailsPane(
+                entry = selectedEntry,
+                session = sessions.firstOrNull { it.id == selectedSession },
+                previousTimestamp = filtered.getOrNull(selectedIndex - 1)?.timestampMillis,
+                hiddenByFilters = selectedEntry != null && selectedIndex < 0,
+                wrapLines = wrapLines,
+                onWrapLinesChange = onWrapLinesChange,
+                onFilterLikeThis = {
+                  filter = filter.copy(query = selectedEntry?.tag.orEmpty())
+                },
+                modifier = Modifier.weight(0.44f).fillMaxSize(),
+              )
             }
           }
         }
       }
     }
+    if (!expanded && tab == 0) {
+      selectedEntry?.let { entry ->
+        LogDetailsSheet(
+          entry = entry,
+          wrapLines = wrapLines,
+          onWrapLinesChange = onWrapLinesChange,
+          onDismiss = { selectedEntryKey = null },
+          onFilterLikeThis = {
+            filter = filter.copy(query = entry.tag.orEmpty())
+            selectedEntryKey = null
+          },
+        )
+      }
+    }
   }
-  selectedEntry?.let { entry ->
-    LogDetailsSheet(
-      entry = entry,
-      wrapLines = wrapLines,
-      onWrapLinesChange = {
-        wrapLines = it
-        preferences.wrapLongLines = it
-      },
-      onDismiss = { selectedEntry = null },
-      onFilterLikeThis = {
-        filter = filter.copy(query = entry.tag.orEmpty())
-        selectedEntry = null
-      },
-    )
+}
+
+@Composable
+private fun LogList(
+  entries: List<LogEntry>,
+  noEntries: Boolean,
+  listState: LazyListState,
+  compact: Boolean,
+  selectedEntryKey: Pair<String, Long>?,
+  onSelectEntry: (LogEntry) -> Unit,
+) {
+  if (entries.isEmpty()) {
+    LogEmptyState(noEntries)
+  } else {
+    LazyColumn(
+      state = listState,
+      modifier = Modifier.fillMaxSize().testTag("log_list"),
+      contentPadding = PaddingValues(12.dp),
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+      itemsIndexed(entries, key = { _, entry -> "${entry.sessionId}:${entry.id}" }) { index, entry
+        ->
+        val previousTimestamp = entries.getOrNull(index - 1)?.timestampMillis
+        if (compact) {
+          TabletLogRow(
+            entry = entry,
+            previousTimestamp = previousTimestamp,
+            selected = (entry.sessionId to entry.id) == selectedEntryKey,
+            onClick = { onSelectEntry(entry) },
+          )
+        } else {
+          LogRow(entry, previousTimestamp, onClick = { onSelectEntry(entry) })
+        }
+      }
+    }
   }
 }
 
@@ -258,9 +384,22 @@ private fun LogViewerTopBar(
   onRefresh: () -> Unit,
   onShare: () -> Unit,
   onClear: () -> Unit,
+  selectedTab: Int? = null,
+  onSelectTab: (Int) -> Unit = {},
 ) {
   TopAppBar(
-    title = { Text("Logs") },
+    title = {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Logs")
+        if (selectedTab != null) {
+          LogViewerTabs(
+            selectedTab,
+            onSelectTab,
+            Modifier.padding(start = 24.dp).width(240.dp),
+          )
+        }
+      }
+    },
     navigationIcon = {
       IconButton(
         onClick = onBack,
@@ -301,8 +440,12 @@ private fun LogViewerTopBar(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LogViewerTabs(selectedTab: Int, onSelectTab: (Int) -> Unit) {
-  PrimaryTabRow(selectedTabIndex = selectedTab) {
+private fun LogViewerTabs(
+  selectedTab: Int,
+  onSelectTab: (Int) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  PrimaryTabRow(selectedTabIndex = selectedTab, modifier = modifier) {
     Tab(
       selected = selectedTab == 0,
       onClick = { onSelectTab(0) },
@@ -324,9 +467,10 @@ private fun SessionSelector(
   sessions: List<LogSession>,
   selectedSessionId: String?,
   onSelectSession: (LogSession) -> Unit,
+  modifier: Modifier = Modifier,
 ) {
   var sessionMenu by remember { mutableStateOf(false) }
-  Box(Modifier.padding(start = 16.dp, top = 8.dp)) {
+  Box(modifier) {
     val selected = sessions.firstOrNull { it.id == selectedSessionId }
     TextButton(
       onClick = { sessionMenu = true },
@@ -344,6 +488,8 @@ private fun SessionSelector(
       Text(
         if (selected?.isCurrent == true) "Current session ▾"
         else "Previous session: ${selected?.startedAtMillis?.let(::formatSessionDate).orEmpty()} ▾",
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
       )
     }
     DropdownMenu(expanded = sessionMenu, onDismissRequest = { sessionMenu = false }) {
@@ -372,7 +518,11 @@ private fun SessionSelector(
 }
 
 @Composable
-private fun LogSearchField(query: String, onQueryChange: (String) -> Unit) {
+private fun LogSearchField(
+  query: String,
+  onQueryChange: (String) -> Unit,
+  modifier: Modifier = Modifier,
+) {
   OutlinedTextField(
     value = query,
     onValueChange = onQueryChange,
@@ -392,7 +542,7 @@ private fun LogSearchField(query: String, onQueryChange: (String) -> Unit) {
         }
       } else null,
     singleLine = true,
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("log_search"),
+    modifier = modifier.testTag("log_search"),
   )
 }
 
@@ -405,61 +555,99 @@ private fun LogFilterRow(
   canFollow: Boolean,
   onSelectLevel: (LogLevel) -> Unit,
   onFollowChange: (Boolean) -> Unit,
+  fullLevelNames: Boolean = false,
+  showFollow: Boolean = true,
 ) {
+  val chips: @Composable () -> Unit = {
+    LogLevel.entries.forEach { level ->
+      LogLevelChip(level, selectedLevel, warningCount, errorCount, fullLevelNames, onSelectLevel)
+    }
+  }
   Row(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Row(
-      Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      LogLevel.entries.forEach { level ->
-        val count =
-          when (level) {
-            LogLevel.WARN -> warningCount
-            LogLevel.ERROR -> errorCount
-            else -> null
-          }
-        FilterChip(
-          selected = selectedLevel == level,
-          onClick = { onSelectLevel(level) },
-          label = {
-            Text(
-              if (count == null) level.shortLabel else "${level.shortLabel} ${cappedCount(count)}",
-              maxLines = 1,
-              softWrap = false,
-              color =
-                if (level == LogLevel.WARN || level == LogLevel.ERROR) levelColor(level)
-                else Color.Unspecified,
-            )
-          },
-          modifier =
-            Modifier.testTag("level_${level.name}").semantics {
-              contentDescription =
-                "Filter ${level.accessibilityName} and above" +
-                  if (count == null) ""
-                  else
-                    ", ${cappedCount(count)} ${level.accessibilityName.lowercase()} ${if (count == 1) "entry" else "entries"}"
-            },
-        )
+    if (fullLevelNames) {
+      FlowRow(
+        modifier = Modifier.weight(1f),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = { chips() },
+      )
+    } else {
+      Row(
+        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        chips()
       }
     }
-    FilterChip(
-      selected = follow,
-      onClick = { onFollowChange(!follow) },
-      enabled = canFollow,
-      label = { Text("Follow") },
-      leadingIcon = { Icon(Icons.Default.VerticalAlignBottom, contentDescription = null) },
-      modifier =
-        Modifier.padding(start = 8.dp).testTag("follow_logs").semantics {
-          contentDescription = "Follow new logs and scroll to the newest entry"
-          stateDescription =
-            if (!canFollow) "Unavailable for this session or log source"
-            else if (follow) "On" else "Off"
-        },
-    )
+    if (showFollow) {
+      FollowChip(follow, canFollow, onFollowChange, Modifier.padding(start = 8.dp))
+    }
   }
+}
+
+@Composable
+private fun LogLevelChip(
+  level: LogLevel,
+  selectedLevel: LogLevel,
+  warningCount: Int,
+  errorCount: Int,
+  fullLevelNames: Boolean,
+  onSelectLevel: (LogLevel) -> Unit,
+) {
+  val count =
+    when (level) {
+      LogLevel.WARN -> warningCount
+      LogLevel.ERROR -> errorCount
+      else -> null
+    }
+  val label = if (fullLevelNames) level.accessibilityName else level.shortLabel
+  FilterChip(
+    selected = selectedLevel == level,
+    onClick = { onSelectLevel(level) },
+    label = {
+      Text(
+        if (count == null) label else "$label ${cappedCount(count)}",
+        maxLines = 1,
+        softWrap = false,
+        color =
+          if (level == LogLevel.WARN || level == LogLevel.ERROR) levelColor(level)
+          else Color.Unspecified,
+      )
+    },
+    modifier =
+      Modifier.testTag("level_${level.name}").semantics {
+        contentDescription =
+          "Filter ${level.accessibilityName} and above" +
+            if (count == null) ""
+            else
+              ", ${cappedCount(count)} ${level.accessibilityName.lowercase()} ${if (count == 1) "entry" else "entries"}"
+      },
+  )
+}
+
+@Composable
+private fun FollowChip(
+  follow: Boolean,
+  canFollow: Boolean,
+  onFollowChange: (Boolean) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  FilterChip(
+    selected = follow,
+    onClick = { onFollowChange(!follow) },
+    enabled = canFollow,
+    label = { Text("Follow") },
+    leadingIcon = { Icon(Icons.Default.VerticalAlignBottom, contentDescription = null) },
+    modifier =
+      modifier.testTag("follow_logs").semantics {
+        contentDescription = "Follow new logs and scroll to the newest entry"
+        stateDescription =
+          if (!canFollow) "Unavailable for this session or log source"
+          else if (follow) "On" else "Off"
+      },
+  )
 }
 
 @Composable

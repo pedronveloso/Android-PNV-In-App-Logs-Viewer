@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.9.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.10.0")
 }
 ```
 
@@ -92,7 +92,7 @@ every sensitive value, so avoid logging secrets and supply an app-specific callb
 The callback should be fast and must not log through Timber, which would recurse. If it throws,
 the affected field is replaced with `<redaction failed>`. Share uses captured entries;
 sharing is a user action through an app-private temporary file and a non-exported `FileProvider`.
-The viewer also remembers one UI preference, whether long lines wrap in the details sheet, in a
+The viewer also remembers one UI preference, whether long lines wrap in the entry details, in a
 private `SharedPreferences` file named `pnv_logviewer`; it never stores log content there.
 
 ## Use an existing store
@@ -108,6 +108,20 @@ out of `message`. Existing sources that include traces in `message` continue to 
 Status cannot inspect arbitrary Timber trees. For an external source it reports persistence and
 redaction as claims made by the host app and displays any read or write errors the adapter exposes.
 The viewer uses the host's `MaterialTheme`; it does not depend on Lazulite or AltSea styles.
+
+## Adaptive viewer layout
+
+The viewer adapts to the width available inside its host, including split-screen windows.
+Below 600 dp it uses the phone layout and initial-letter severity filters. From 600 dp the
+filters show full level names and wrap as needed. At 840 dp and wider, a compact log list sits
+beside a persistent detail pane; narrower windows use the details sheet.
+
+The detail pane starts with “Select a log entry”. Selecting an entry pauses Follow, and new
+entries never replace the selection. Resume Follow to scroll to new logs while keeping the
+inspected entry pinned. Filtering can hide the selected row without closing its details;
+switching sessions, clearing the session, or removal of that entry clears the selection.
+Details include the full message, separate exception trace, tag filtering, and the shared
+“Wrap long lines” preference. Elapsed times compare adjacent visible entries.
 
 ## Try the sample
 

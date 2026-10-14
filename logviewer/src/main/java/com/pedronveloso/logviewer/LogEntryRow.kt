@@ -4,14 +4,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,10 +30,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
@@ -110,6 +116,76 @@ internal fun styledTag(tag: String): AnnotatedString {
   }
 }
 
+@Composable
+internal fun TabletLogRow(
+  entry: LogEntry,
+  previousTimestamp: Long?,
+  selected: Boolean,
+  onClick: () -> Unit,
+) {
+  val level = LogLevel.fromPriority(entry.priority)
+  val fontScale = LocalDensity.current.fontScale
+  BoxWithConstraints(
+    Modifier.fillMaxWidth()
+      .defaultMinSize(minHeight = 64.dp)
+      .background(
+        if (selected) MaterialTheme.colorScheme.secondaryContainer
+        else MaterialTheme.colorScheme.surfaceContainer,
+        RoundedCornerShape(8.dp),
+      )
+      .selectable(selected = selected, role = Role.Button, onClick = onClick)
+      .testTag("log_entry_${entry.id}")
+      .padding(12.dp),
+  ) {
+    val stackMetadata = maxWidth < 400.dp || fontScale > 1.3f
+    val timing =
+      listOfNotNull(
+          formatTime(entry.timestampMillis),
+          formatElapsedTime(previousTimestamp, entry.timestampMillis),
+        )
+        .joinToString(" · ")
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(level.shortLabel, color = levelColor(level), fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.width(8.dp))
+        Text(
+          entry.tag ?: "(no tag)",
+          style = MaterialTheme.typography.labelMedium,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.weight(1f),
+        )
+        if (entry.throwableStackTrace != null) {
+          Icon(
+            Icons.Outlined.ErrorOutline,
+            contentDescription = "Has exception details",
+            tint = levelColor(level),
+            modifier = Modifier.padding(horizontal = 4.dp).size(16.dp),
+          )
+        }
+        if (!stackMetadata) {
+          Text(
+            timing,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(start = 8.dp),
+          )
+        }
+      }
+      if (stackMetadata) {
+        Text(timing, style = MaterialTheme.typography.labelSmall)
+      }
+      if (entry.message.isNotEmpty()) {
+        Text(
+          entry.message,
+          style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+  }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LogDetailsSheet(
@@ -120,8 +196,58 @@ internal fun LogDetailsSheet(
   onFilterLikeThis: () -> Unit,
 ) {
   ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("log_details_sheet")) {
+    LogDetailsContent(entry, wrapLines, onWrapLinesChange, onFilterLikeThis)
+  }
+}
+
+@Composable
+internal fun LogDetailsPane(
+  entry: LogEntry?,
+  session: LogSession?,
+  previousTimestamp: Long?,
+  hiddenByFilters: Boolean,
+  wrapLines: Boolean,
+  onWrapLinesChange: (Boolean) -> Unit,
+  onFilterLikeThis: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Box(
+    modifier.background(MaterialTheme.colorScheme.surfaceContainerLow).testTag("log_details_pane"),
+  ) {
+    if (entry == null) {
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Select a log entry", modifier = Modifier.padding(24.dp))
+      }
+    } else {
+      LogDetailsContent(
+        entry = entry,
+        wrapLines = wrapLines,
+        onWrapLinesChange = onWrapLinesChange,
+        onFilterLikeThis = onFilterLikeThis,
+        modifier = Modifier.padding(top = 20.dp),
+        session = session,
+        previousTimestamp = previousTimestamp,
+        hiddenByFilters = hiddenByFilters,
+      )
+    }
+  }
+}
+
+@Composable
+private fun LogDetailsContent(
+  entry: LogEntry,
+  wrapLines: Boolean,
+  onWrapLinesChange: (Boolean) -> Unit,
+  onFilterLikeThis: () -> Unit,
+  modifier: Modifier = Modifier,
+  session: LogSession? = null,
+  previousTimestamp: Long? = null,
+  hiddenByFilters: Boolean = false,
+) {
+  key(entry.sessionId, entry.id) {
     Column(
-      Modifier.fillMaxWidth()
+      modifier
+        .fillMaxWidth()
         .verticalScroll(rememberScrollState())
         .padding(horizontal = 20.dp)
         .padding(bottom = 24.dp),
@@ -136,6 +262,23 @@ internal fun LogDetailsSheet(
         "${LogLevel.fromPriority(entry.priority).accessibilityName} · ${formatTime(entry.timestampMillis)}",
         style = MaterialTheme.typography.labelMedium,
       )
+      session?.let {
+        Text(
+          if (it.isCurrent) "Current session"
+          else "Session: ${formatSessionDate(it.startedAtMillis)}",
+          style = MaterialTheme.typography.labelMedium,
+        )
+      }
+      formatElapsedTime(previousTimestamp, entry.timestampMillis)?.let {
+        Text("Since previous visible entry: $it", style = MaterialTheme.typography.labelMedium)
+      }
+      if (hiddenByFilters) {
+        Text(
+          "Selected entry is hidden by filters.",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
       TextButton(
         onClick = onFilterLikeThis,
         enabled = !entry.tag.isNullOrBlank(),
@@ -155,7 +298,11 @@ internal fun LogDetailsSheet(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-          Text("Wrap long lines", style = MaterialTheme.typography.labelLarge)
+          Text(
+            "Wrap long lines",
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.weight(1f),
+          )
           Switch(checked = wrapLines, onCheckedChange = null)
         }
       }
