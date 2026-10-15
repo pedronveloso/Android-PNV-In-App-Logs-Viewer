@@ -25,6 +25,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+private const val UI_WAIT_TIMEOUT_MILLIS = 5_000L
+
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class LogViewerComposeTest {
@@ -34,7 +36,7 @@ class LogViewerComposeTest {
   fun detailsSheetShowsSeparateTrace() {
     val source = FakeSource(canClear = true)
     compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(5_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithContentDescription("Has exception details").assertExists()
@@ -58,7 +60,7 @@ class LogViewerComposeTest {
   fun storedWrapPreferenceIsRestored() {
     prefs().edit().putBoolean(LogViewerPreferences.KEY_WRAP, true).commit()
     openDetails()
-    compose.waitUntil(5_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithTag("wrap_lines_toggle").fetchSemanticsNodes().any {
         SemanticsProperties.ToggleableState in it.config &&
           it.config[SemanticsProperties.ToggleableState] == ToggleableState.On
@@ -72,7 +74,7 @@ class LogViewerComposeTest {
 
   private fun openDetails() {
     compose.setContent { MaterialTheme { LogViewer(FakeSource(canClear = true), onBack = {}) } }
-    compose.waitUntil(5_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_entry_0").performClick()
@@ -82,7 +84,7 @@ class LogViewerComposeTest {
   fun readOnlySourceHidesClearControl() {
     val source = FakeSource(canClear = false)
     compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(5_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithContentDescription("Clear logs in selected session").assertDoesNotExist()

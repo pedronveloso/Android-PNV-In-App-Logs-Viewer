@@ -3,9 +3,11 @@ package com.pedronveloso.logviewer
 import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -36,6 +38,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+private const val UI_WAIT_TIMEOUT_MILLIS = 3_000L
+
 class LogViewerTest {
   @get:Rule val compose = createComposeRule()
 
@@ -48,7 +52,7 @@ class LogViewerTest {
         LogEntry(1, "current", 1, Log.ERROR, "Network", "Request failed"),
       )
     compose.setContent { MaterialTheme { PhoneViewer(source) } }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Request failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_search").performTextInput("network")
@@ -67,7 +71,7 @@ class LogViewerTest {
         LogEntry(1, "current", 1, Log.ERROR, "Network", "Request failed"),
       )
     compose.setContent { MaterialTheme { PhoneViewer(source) } }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Request failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("clear_log_search").assertDoesNotExist()
@@ -89,7 +93,7 @@ class LogViewerTest {
         LogEntry(2, "current", 11_100, Log.DEBUG, "Shown", "Third"),
       )
     compose.setContent { MaterialTheme { PhoneViewer(source) } }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("+10s").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_search").performTextInput("Shown")
@@ -114,7 +118,7 @@ class LogViewerTest {
         LogEntry(1, "current", 1, Log.DEBUG, "Other", "Unrelated"),
       )
     compose.setContent { MaterialTheme { PhoneViewer(source) } }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithContentDescription("Has exception details").assertExists()
@@ -167,12 +171,12 @@ class LogViewerTest {
         LogEntry(it.toLong(), "current", it.toLong(), Log.DEBUG, "Loop", "Line $it")
       }
     compose.setContent { MaterialTheme { PhoneViewer(source) } }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Line 99").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("follow_logs").assertIsSelected()
     compose.onNodeWithTag("log_list").performTouchInput { swipeDown() }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       runCatching {
           compose.onNodeWithTag("follow_logs").assertIsNotSelected()
           true
@@ -201,14 +205,14 @@ class LogViewerTest {
         LogEntry(it.toLong(), "current", 0, Log.WARN, "Batch", "Warning $it")
       } + LogEntry(100, "current", 0, Log.ERROR, "Batch", "Error")
     source.notifyChanged()
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("W 99", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("E 1", useUnmergedTree = true).assertExists()
 
     source.records = source.records + LogEntry(101, "current", 0, Log.WARN, "Batch", "More")
     source.notifyChanged()
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("W 99+", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_search").performTextInput("no match")
@@ -218,7 +222,7 @@ class LogViewerTest {
 
     compose.onNodeWithTag("session_selector").performClick()
     compose.onNodeWithTag("session_previous").performClick()
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("W 1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("E 2", useUnmergedTree = true).assertExists()
@@ -229,7 +233,7 @@ class LogViewerTest {
     val source = FakeSource()
     source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
     compose.setContent { MaterialTheme { PhoneViewer(source) } }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Started").fetchSemanticsNodes().isNotEmpty()
     }
     listOf(
@@ -293,20 +297,32 @@ class LogViewerTest {
 
   @Test
   fun availableWidthChoosesInlineDetailsOrPhoneSheet() {
-    val expanded = hasExpandedWindow()
+    var availableWidth = 0.dp
     val source = FakeSource()
     source.records =
       listOf(
         LogEntry(0, "current", 0, Log.WARN, "Worker", "Warning", "Tablet trace"),
       )
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3000) {
+    compose.setContent {
+      MaterialTheme {
+        BoxWithConstraints {
+          val width = maxWidth
+          SideEffect { availableWidth = width }
+          LogViewer(source, onBack = {})
+        }
+      }
+    }
+    val expanded = compose.runOnIdle { availableWidth >= 840.dp }
+    val fullLevelNames = compose.runOnIdle { availableWidth >= 600.dp }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose
-        .onAllNodesWithText(if (expanded) "Warning 1" else "W 1", useUnmergedTree = true)
+        .onAllNodesWithText(if (fullLevelNames) "Warning 1" else "W 1", useUnmergedTree = true)
         .fetchSemanticsNodes()
         .isNotEmpty()
     }
-    compose.onNodeWithTag("level_VERBOSE").assertTextContains(if (expanded) "Verbose" else "V")
+    compose
+      .onNodeWithTag("level_VERBOSE")
+      .assertTextContains(if (fullLevelNames) "Verbose" else "V")
     if (expanded) compose.onNodeWithText("Select a log entry").assertExists()
     compose.onNodeWithTag("follow_logs").assertIsSelected()
     compose.onNodeWithTag("log_entry_0").performClick()
@@ -333,7 +349,7 @@ class LogViewerTest {
     compose.setContent {
       MaterialTheme { Box(Modifier.width(width)) { LogViewer(source, onBack = {}) } }
     }
-    compose.waitUntil(3000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Failure").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_entry_0").performClick()

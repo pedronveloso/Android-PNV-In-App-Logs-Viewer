@@ -64,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -80,6 +81,11 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private val ExpandedLayoutMinWidth = 840.dp
+private val FullLevelNamesMinWidth = 600.dp
+private const val LOG_LIST_PANE_WEIGHT = 0.56f
+private const val LOG_DETAILS_PANE_WEIGHT = 0.44f
 
 /** Host-themed, navigation-agnostic log viewer. Pass one source per installation. */
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -185,15 +191,18 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
   }
 
   BoxWithConstraints(modifier) {
-    val expanded = maxWidth >= 840.dp
-    val fullLevelNames = maxWidth >= 600.dp
+    val expanded = maxWidth >= ExpandedLayoutMinWidth
+    val fullLevelNames = maxWidth >= FullLevelNamesMinWidth
     val onWrapLinesChange: (Boolean) -> Unit = {
       wrapLines = it
       preferences.wrapLongLines = it
     }
     val onSelectEntry: (LogEntry) -> Unit = {
-      selectedEntryKey = it.sessionId to it.id
-      follow = false
+      val key = it.sessionId to it.id
+      if (selectedEntryKey != key) {
+        selectedEntryKey = key
+        follow = false
+      }
     }
     Scaffold(
       topBar = {
@@ -284,7 +293,9 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
             showFollow = !expanded,
           )
           Row(Modifier.fillMaxWidth().weight(1f)) {
-            Column(if (expanded) Modifier.weight(0.56f) else Modifier.fillMaxWidth()) {
+            Column(
+              if (expanded) Modifier.weight(LOG_LIST_PANE_WEIGHT) else Modifier.fillMaxWidth(),
+            ) {
               Text(
                 "${filtered.size} of ${allEntries.size} entries",
                 style = MaterialTheme.typography.labelMedium,
@@ -314,7 +325,7 @@ public fun LogViewer(source: LogSource, onBack: () -> Unit, modifier: Modifier =
                 onFilterLikeThis = {
                   filter = filter.copy(query = selectedEntry?.tag.orEmpty())
                 },
-                modifier = Modifier.weight(0.44f).fillMaxSize(),
+                modifier = Modifier.weight(LOG_DETAILS_PANE_WEIGHT).fillMaxSize(),
               )
             }
           }
@@ -350,24 +361,28 @@ private fun LogList(
   if (entries.isEmpty()) {
     LogEmptyState(noEntries)
   } else {
-    LazyColumn(
-      state = listState,
-      modifier = Modifier.fillMaxSize().testTag("log_list"),
-      contentPadding = PaddingValues(12.dp),
-      verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-      itemsIndexed(entries, key = { _, entry -> "${entry.sessionId}:${entry.id}" }) { index, entry
-        ->
-        val previousTimestamp = entries.getOrNull(index - 1)?.timestampMillis
-        if (compact) {
-          TabletLogRow(
-            entry = entry,
-            previousTimestamp = previousTimestamp,
-            selected = (entry.sessionId to entry.id) == selectedEntryKey,
-            onClick = { onSelectEntry(entry) },
-          )
-        } else {
-          LogRow(entry, previousTimestamp, onClick = { onSelectEntry(entry) })
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+      val stackMetadata = shouldStackTabletMetadata(maxWidth, LocalDensity.current.fontScale)
+      LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().testTag("log_list"),
+        contentPadding = PaddingValues(LogListContentPadding),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+      ) {
+        itemsIndexed(entries, key = { _, entry -> "${entry.sessionId}:${entry.id}" }) { index, entry
+          ->
+          val previousTimestamp = entries.getOrNull(index - 1)?.timestampMillis
+          if (compact) {
+            TabletLogRow(
+              entry = entry,
+              previousTimestamp = previousTimestamp,
+              stackMetadata = stackMetadata,
+              selected = (entry.sessionId to entry.id) == selectedEntryKey,
+              onClick = { onSelectEntry(entry) },
+            )
+          } else {
+            LogRow(entry, previousTimestamp, onClick = { onSelectEntry(entry) })
+          }
         }
       }
     }

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
@@ -46,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -106,26 +105,37 @@ internal fun LogRow(entry: LogEntry, previousTimestamp: Long?, onClick: () -> Un
   }
 }
 
-internal fun styledTag(tag: String): AnnotatedString {
+internal fun styledTag(tag: String, multiline: Boolean = true): AnnotatedString {
   val divider = tag.lastIndexOf('$')
   if (divider <= 0 || divider == tag.lastIndex) return AnnotatedString(tag)
   return buildAnnotatedString {
     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(tag.substring(0, divider)) }
-    append("$\n")
+    append(if (multiline) "$\n" else "$")
     append(tag.substring(divider + 1))
   }
 }
+
+internal val LogListContentPadding: Dp = 12.dp
+private val TabletLogRowPadding = 12.dp
+private val MinInlineMetadataWidth = 400.dp
+private const val MAX_INLINE_METADATA_FONT_SCALE = 1.3f
+private const val MAX_DISPLAYED_ENTRY_COUNT = 99
+
+/** The viewport includes the lazy list's padding and the row's own padding. */
+internal fun shouldStackTabletMetadata(viewportWidth: Dp, fontScale: Float): Boolean =
+  viewportWidth - LogListContentPadding * 2 - TabletLogRowPadding * 2 < MinInlineMetadataWidth ||
+    fontScale > MAX_INLINE_METADATA_FONT_SCALE
 
 @Composable
 internal fun TabletLogRow(
   entry: LogEntry,
   previousTimestamp: Long?,
+  stackMetadata: Boolean,
   selected: Boolean,
   onClick: () -> Unit,
 ) {
   val level = LogLevel.fromPriority(entry.priority)
-  val fontScale = LocalDensity.current.fontScale
-  BoxWithConstraints(
+  Box(
     Modifier.fillMaxWidth()
       .defaultMinSize(minHeight = 64.dp)
       .background(
@@ -135,21 +145,20 @@ internal fun TabletLogRow(
       )
       .selectable(selected = selected, role = Role.Button, onClick = onClick)
       .testTag("log_entry_${entry.id}")
-      .padding(12.dp),
+      .padding(TabletLogRowPadding),
   ) {
-    val stackMetadata = maxWidth < 400.dp || fontScale > 1.3f
     val timing =
       listOfNotNull(
           formatTime(entry.timestampMillis),
           formatElapsedTime(previousTimestamp, entry.timestampMillis),
         )
         .joinToString(" · ")
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text(level.shortLabel, color = levelColor(level), fontFamily = FontFamily.Monospace)
         Spacer(Modifier.width(8.dp))
         Text(
-          entry.tag ?: "(no tag)",
+          styledTag(entry.tag ?: "(no tag)", multiline = false),
           style = MaterialTheme.typography.labelMedium,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
@@ -345,7 +354,8 @@ internal val LogLevel.accessibilityName: String
   get() =
     if (this == LogLevel.WARN) "Warning" else name.lowercase().replaceFirstChar(Char::uppercaseChar)
 
-internal fun cappedCount(count: Int): String = if (count > 99) "99+" else count.toString()
+internal fun cappedCount(count: Int): String =
+  if (count > MAX_DISPLAYED_ENTRY_COUNT) "$MAX_DISPLAYED_ENTRY_COUNT+" else count.toString()
 
 private fun formatTime(timestamp: Long) =
   SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(timestamp))

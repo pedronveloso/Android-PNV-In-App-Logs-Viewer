@@ -121,7 +121,9 @@ entries never replace the selection. Resume Follow to scroll to new logs while k
 inspected entry pinned. Filtering can hide the selected row without closing its details;
 switching sessions, clearing the session, or removal of that entry clears the selection.
 Details include the full message, separate exception trace, tag filtering, and the shared
-“Wrap long lines” preference. Elapsed times compare adjacent visible entries.
+“Wrap long lines” preference. The tablet detail pane also shows the session and elapsed time
+since the previous visible entry; the phone details sheet retains its existing content.
+Elapsed times in the list and tablet detail pane compare adjacent visible entries.
 
 ## Try the sample
 
