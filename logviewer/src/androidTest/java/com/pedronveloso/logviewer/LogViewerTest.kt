@@ -1,9 +1,13 @@
 package com.pedronveloso.logviewer
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +17,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -24,6 +29,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +37,8 @@ import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+
+private const val UI_WAIT_TIMEOUT_MILLIS = 3_000L
 
 class LogViewerTest {
   @get:Rule val compose = createComposeRule()
@@ -43,8 +51,8 @@ class LogViewerTest {
         LogEntry(0, "current", 0, Log.DEBUG, "Worker", "Started"),
         LogEntry(1, "current", 1, Log.ERROR, "Network", "Request failed"),
       )
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3_000) {
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Request failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_search").performTextInput("network")
@@ -62,8 +70,8 @@ class LogViewerTest {
         LogEntry(0, "current", 0, Log.DEBUG, "Worker", "Started"),
         LogEntry(1, "current", 1, Log.ERROR, "Network", "Request failed"),
       )
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3_000) {
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Request failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("clear_log_search").assertDoesNotExist()
@@ -84,8 +92,8 @@ class LogViewerTest {
         LogEntry(1, "current", 10_100, Log.DEBUG, "Shown", "Second"),
         LogEntry(2, "current", 11_100, Log.DEBUG, "Shown", "Third"),
       )
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3_000) {
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("+10s").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_search").performTextInput("Shown")
@@ -109,8 +117,8 @@ class LogViewerTest {
         ),
         LogEntry(1, "current", 1, Log.DEBUG, "Other", "Unrelated"),
       )
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3_000) {
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Failed").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithContentDescription("Has exception details").assertExists()
@@ -127,7 +135,7 @@ class LogViewerTest {
   fun statusIdentifiesExternalPersistenceAsDeclared() {
     val source = FakeSource()
     source.capabilityState.value = LogCapabilities(true, true, false, true)
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
     compose.onNodeWithTag("status_tab").performClick()
     compose
       .onNodeWithText(
@@ -162,13 +170,13 @@ class LogViewerTest {
       (0 until 100).map {
         LogEntry(it.toLong(), "current", it.toLong(), Log.DEBUG, "Loop", "Line $it")
       }
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3_000) {
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Line 99").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("follow_logs").assertIsSelected()
     compose.onNodeWithTag("log_list").performTouchInput { swipeDown() }
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       runCatching {
           compose.onNodeWithTag("follow_logs").assertIsNotSelected()
           true
@@ -188,7 +196,7 @@ class LogViewerTest {
         LogEntry(3, "previous", 0, Log.ERROR, "Other", "Another error"),
         LogEntry(4, "previous", 0, Log.ASSERT, "Other", "Assertion"),
       )
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
     compose.onNodeWithText("W 0", useUnmergedTree = true).assertExists()
     compose.onNodeWithText("E 0", useUnmergedTree = true).assertExists()
 
@@ -197,14 +205,14 @@ class LogViewerTest {
         LogEntry(it.toLong(), "current", 0, Log.WARN, "Batch", "Warning $it")
       } + LogEntry(100, "current", 0, Log.ERROR, "Batch", "Error")
     source.notifyChanged()
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("W 99", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("E 1", useUnmergedTree = true).assertExists()
 
     source.records = source.records + LogEntry(101, "current", 0, Log.WARN, "Batch", "More")
     source.notifyChanged()
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("W 99+", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("log_search").performTextInput("no match")
@@ -214,7 +222,7 @@ class LogViewerTest {
 
     compose.onNodeWithTag("session_selector").performClick()
     compose.onNodeWithTag("session_previous").performClick()
-    compose.waitUntil(3_000) {
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("W 1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("E 2", useUnmergedTree = true).assertExists()
@@ -224,8 +232,8 @@ class LogViewerTest {
   fun controlsExposeAccessibleActionsAndFollowState() {
     val source = FakeSource()
     source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
-    compose.waitUntil(3_000) {
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
       compose.onAllNodesWithText("Started").fetchSemanticsNodes().isNotEmpty()
     }
     listOf(
@@ -256,7 +264,7 @@ class LogViewerTest {
     source.changeFlow = null
     source.capabilityState.value = LogCapabilities(true, false, false, true)
     source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
     compose.onNodeWithContentDescription("Refresh logs").assertExists()
   }
 
@@ -283,8 +291,89 @@ class LogViewerTest {
     source.changeFlow = null
     source.capabilityState.value = LogCapabilities(true, false, true, true)
     source.records = listOf(LogEntry(1, "current", 0, Log.WARN, "Worker", "Started"))
-    compose.setContent { MaterialTheme { LogViewer(source, onBack = {}) } }
+    compose.setContent { MaterialTheme { PhoneViewer(source) } }
     compose.onNodeWithContentDescription("Refresh logs").assertExists()
+  }
+
+  @Test
+  fun availableWidthChoosesInlineDetailsOrPhoneSheet() {
+    var availableWidth = 0.dp
+    val source = FakeSource()
+    source.records =
+      listOf(
+        LogEntry(0, "current", 0, Log.WARN, "Worker", "Warning", "Tablet trace"),
+      )
+    compose.setContent {
+      MaterialTheme {
+        BoxWithConstraints {
+          val width = maxWidth
+          SideEffect { availableWidth = width }
+          LogViewer(source, onBack = {})
+        }
+      }
+    }
+    val expanded = compose.runOnIdle { availableWidth >= 840.dp }
+    val fullLevelNames = compose.runOnIdle { availableWidth >= 600.dp }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
+      compose
+        .onAllNodesWithText(if (fullLevelNames) "Warning 1" else "W 1", useUnmergedTree = true)
+        .fetchSemanticsNodes()
+        .isNotEmpty()
+    }
+    compose
+      .onNodeWithTag("level_VERBOSE")
+      .assertTextContains(if (fullLevelNames) "Verbose" else "V")
+    if (expanded) compose.onNodeWithText("Select a log entry").assertExists()
+    compose.onNodeWithTag("follow_logs").assertIsSelected()
+    compose.onNodeWithTag("log_entry_0").performClick()
+    compose.onNodeWithTag("follow_logs").assertIsNotSelected()
+    if (expanded) {
+      compose.onNodeWithTag("log_entry_0").assertIsSelected()
+      compose.onNodeWithTag("log_details_sheet").assertDoesNotExist()
+    } else {
+      compose.onNodeWithTag("log_details_sheet").assertExists()
+    }
+    compose.onNodeWithText("Tablet trace").assertExists()
+  }
+
+  @Test
+  fun resizingPreservesDetailsInTheAvailablePresentation() {
+    val expanded = hasExpandedWindow()
+    val initialWidth = if (expanded) 1000.dp else 400.dp
+    var width by mutableStateOf(initialWidth)
+    val source = FakeSource()
+    source.records =
+      listOf(
+        LogEntry(0, "current", 0, Log.ERROR, null, "Failure", "Resize trace"),
+      )
+    compose.setContent {
+      MaterialTheme { Box(Modifier.width(width)) { LogViewer(source, onBack = {}) } }
+    }
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) {
+      compose.onAllNodesWithText("Failure").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("log_entry_0").performClick()
+    compose.runOnIdle { width = if (expanded) 500.dp else 320.dp }
+    compose.onNodeWithTag("log_details_sheet").assertExists()
+    compose.onNodeWithText("Resize trace").assertExists()
+    compose.runOnIdle { width = initialWidth }
+    if (expanded) {
+      compose.onNodeWithTag("log_details_sheet").assertDoesNotExist()
+      compose.onNodeWithTag("log_details_pane").assertExists()
+      compose.onNodeWithTag("log_entry_0").assertIsSelected()
+    } else {
+      compose.onNodeWithTag("log_details_sheet").assertExists()
+    }
+    compose.onNodeWithText("Resize trace").assertExists()
+  }
+
+  private fun hasExpandedWindow() =
+    ApplicationProvider.getApplicationContext<Context>().resources.configuration.screenWidthDp >=
+      840
+
+  @Composable
+  private fun PhoneViewer(source: LogSource) {
+    Box(Modifier.width(420.dp)) { LogViewer(source, onBack = {}) }
   }
 
   private class FakeSource : LogSource {

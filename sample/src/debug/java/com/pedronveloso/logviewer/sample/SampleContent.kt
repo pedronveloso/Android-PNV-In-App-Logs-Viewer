@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -30,9 +31,9 @@ import timber.log.Timber
 
 @Composable
 fun SampleContent(modifier: Modifier = Modifier) {
-  var showViewer by remember { mutableStateOf(false) }
+  var showViewer by rememberSaveable { mutableStateOf(false) }
   var count by remember { mutableIntStateOf(0) }
-  var scenario by remember { mutableStateOf(StatusDemoScenario.REAL) }
+  var scenario by rememberSaveable { mutableStateOf(StatusDemoScenario.REAL) }
   val returnHome = { showViewer = false }
   BackHandler(enabled = showViewer, onBack = returnHome)
   if (showViewer) {

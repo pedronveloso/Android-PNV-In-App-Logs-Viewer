@@ -2,6 +2,7 @@ package com.pedronveloso.logviewer
 
 import android.util.Log
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -40,6 +41,30 @@ class LogPresentationTest {
     assertThat(tag.spanStyles[0].end).isEqualTo("Outer\$Inner".length)
     assertThat(styledTag("PlainTag").spanStyles).isEmpty()
     assertThat(styledTag("PlainTag").text).isEqualTo("PlainTag")
+  }
+
+  @Test
+  fun compactTagsPreserveClassEmphasisWithoutAddingLineBreaks() {
+    val tag = styledTag("Outer\$Inner\$someFunction", multiline = false)
+    assertThat(tag.text).isEqualTo("Outer\$Inner\$someFunction")
+    assertThat(tag.spanStyles).hasSize(1)
+    assertThat(tag.spanStyles.single().item.fontWeight).isEqualTo(FontWeight.Bold)
+    assertThat(tag.spanStyles.single().start).isEqualTo(0)
+    assertThat(tag.spanStyles.single().end).isEqualTo("Outer\$Inner".length)
+    listOf("PlainTag", "\$leading", "trailing\$", "").forEach { plain ->
+      val styled = styledTag(plain, multiline = false)
+      assertThat(styled.text).isEqualTo(plain)
+      assertThat(styled.spanStyles).isEmpty()
+    }
+  }
+
+  @Test
+  fun tabletMetadataAccountsForBothPaddingsAndFontScaleBoundaries() {
+    // 48 dp is consumed by the list and row's horizontal padding together.
+    assertThat(shouldStackTabletMetadata(447.dp, 1f)).isTrue()
+    assertThat(shouldStackTabletMetadata(448.dp, 1f)).isFalse()
+    assertThat(shouldStackTabletMetadata(600.dp, 1.3f)).isFalse()
+    assertThat(shouldStackTabletMetadata(600.dp, 1.31f)).isTrue()
   }
 
   @Test
