@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.11.1")
+    debugImplementation("io.github.pedronveloso:logviewer:0.12.0")
 }
 ```
 
@@ -143,7 +143,7 @@ Tap an exit for its details sheet:
 
 Data that is better read on a computer is shared rather than shown:
 - **Share trace** appears when Android kept a trace. It sends an ANR's thread dump as `anr-<time>-<unique>.txt`, or a native crash tombstone (Android 12+) as `tombstone-<time>-<unique>.pb`. The tombstone is a protobuf following AOSP's [`tombstone.proto`](https://android.googlesource.com/platform/system/core/+/refs/heads/main/debuggerd/proto/tombstone.proto). Read it with AOSP's `pbtombstone`, or with `protoc --decode=Tombstone tombstone.proto < tombstone.pb`. Android keeps traces in a shared buffer, so an older one may already be gone.
-- **Share details** sends every field as `exit-<time>-<unique>.txt`, with an ANR dump appended.
+- **Share details** sends every field as `exit-<time>-<unique>.txt`, with an ANR dump appended. If the linked session is still kept, you can include all its retained logs in the same file. Search and level filters do not affect these logs.
 
 ANR dumps and native tombstones are raw platform diagnostics. The redactor does not apply to
 `openTrace`, Share trace, or the ANR dump appended by Share details. These can contain sensitive

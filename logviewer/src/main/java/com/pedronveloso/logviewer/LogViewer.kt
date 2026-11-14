@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -369,9 +370,26 @@ public fun LogViewer(
     }
     if (tab == 1 && processExits != null) {
       selectedExit?.let { exit ->
+        val sessionKept = sessions.any { it.id == exit.sessionId }
+        var showIncludeLogs by
+          rememberSaveable(source, processExits, exit.key, sessionKept) {
+            mutableStateOf(false)
+          }
+        val shareDetails: (Boolean) -> Unit = { includeLogs ->
+          showIncludeLogs = false
+          scope.launch {
+            runCatching {
+              shareExitDetails(context, processExits, exit, source.takeIf { includeLogs })
+            }
+              .onFailure {
+                if (it is CancellationException) throw it
+                error = it.message ?: "Could not share the details"
+              }
+          }
+        }
         ExitDetailsSheet(
           exit = exit,
-          sessionKept = sessions.any { it.id == exit.sessionId },
+          sessionKept = sessionKept,
           onOpenSession = {
             selectedExitKey = null
             selectedEntryKey = null
@@ -390,16 +408,24 @@ public fun LogViewer(
             }
           },
           onShareDetails = {
-            scope.launch {
-              runCatching { shareExitDetails(context, processExits, exit) }
-                .onFailure {
-                  if (it is CancellationException) throw it
-                  error = it.message ?: "Could not share the details"
-                }
-            }
+            if (sessionKept) showIncludeLogs = true else shareDetails(false)
           },
           onDismiss = { selectedExitKey = null },
         )
+        if (showIncludeLogs) {
+          AlertDialog(
+            onDismissRequest = { showIncludeLogs = false },
+            title = { Text("Include session logs?") },
+            text = { Text("Add this session's logs to the shared details?") },
+            confirmButton = {
+              TextButton(onClick = { shareDetails(true) }) { Text("Include logs") }
+            },
+            dismissButton = {
+              TextButton(onClick = { shareDetails(false) }) { Text("Details only") }
+            },
+            modifier = Modifier.testTag("include_session_logs_dialog"),
+          )
+        }
       }
     }
     if (!expanded && tab == 0) {
@@ -940,6 +966,7 @@ internal suspend fun shareExitDetails(
   context: Context,
   history: ProcessExitHistory,
   exit: ProcessExit,
+  sessionLogsSource: LogSource? = null,
 ) {
   val file =
     withContext(Dispatchers.IO) {
@@ -950,8 +977,12 @@ internal suspend fun shareExitDetails(
         } else {
           null
         }
+      val logs = sessionLogsSource?.let { source ->
+        val sessionId = checkNotNull(exit.sessionId) { "This exit has no linked log session" }
+        formatLogEntries(source.entries(sessionId)).ifEmpty { "No retained log entries." }
+      }
       exportFile(context, exit.exportFileName("exit", "txt")) {
-        it.write(exit.detailsText(trace).toByteArray())
+        it.write(exit.detailsText(trace, logs).toByteArray())
       }
     }
   currentCoroutineContext().ensureActive()

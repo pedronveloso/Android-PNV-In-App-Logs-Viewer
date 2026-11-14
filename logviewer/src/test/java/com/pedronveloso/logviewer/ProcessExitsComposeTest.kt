@@ -39,6 +39,9 @@ class ProcessExitsComposeTest {
   @Before
   fun setUp() {
     context = ApplicationProvider.getApplicationContext()
+    val providerCache = androidx.core.content.FileProvider::class.java.getDeclaredField("sCache")
+    providerCache.isAccessible = true
+    (providerCache.get(null) as MutableMap<*, *>).clear()
     context
       .getSharedPreferences(LogViewerPreferences.FILE, Context.MODE_PRIVATE)
       .edit()
@@ -163,6 +166,133 @@ class ProcessExitsComposeTest {
         .fetchSemanticsNodes()
         .isNotEmpty()
     }
+    compose.onNodeWithTag("exit_details_sheet").assertDoesNotExist()
+  }
+
+  private fun openLinkedExit() {
+    openExitSheet(
+      history(
+        RawExit(
+          1_000,
+          3,
+          4,
+          null,
+          100,
+          0,
+          0,
+          "app",
+          stateSummary = encodeStateSummary("0001790399000-3f2a9c1b", null),
+        ),
+      ),
+      3,
+    )
+    compose.onNodeWithTag("share_exit_details").performScrollTo().performClick()
+    compose.onNodeWithTag("include_session_logs_dialog").assertExists()
+  }
+
+  private fun sharedDetails(): String {
+    val application =
+      org.robolectric.Shadows.shadowOf(context.applicationContext as android.app.Application)
+    compose.waitUntil(UI_WAIT_TIMEOUT_MILLIS) { application.peekNextStartedActivity() != null }
+    val chooser = application.nextStartedActivity
+    val send =
+      chooser.getParcelableExtra(
+        android.content.Intent.EXTRA_INTENT,
+        android.content.Intent::class.java,
+      )!!
+    val uri =
+      send.getParcelableExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri::class.java)!!
+    return context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
+  }
+
+  @Test
+  fun includingLogsSharesTheLinkedSessionRatherThanTheSelectedSession() {
+    openLinkedExit()
+    compose.onNodeWithText("Include logs").performClick()
+    val text = sharedDetails()
+    assertThat(text).contains("Session logs\n")
+    assertThat(text).contains("entry in old")
+    compose.onNodeWithTag("include_session_logs_dialog").assertDoesNotExist()
+  }
+
+  @Test
+  fun detailsOnlyDoesNotIncludeLogsAndAsksAgainNextTime() {
+    openLinkedExit()
+    compose.onNodeWithText("Details only").performClick()
+    assertThat(sharedDetails()).doesNotContain("Session logs\n")
+    compose.onNodeWithTag("share_exit_details").performScrollTo().performClick()
+    compose.onNodeWithTag("include_session_logs_dialog").assertExists()
+  }
+
+  @Test
+  fun backDismissesThePromptWithoutSharing() {
+    openLinkedExit()
+    compose.runOnIdle {
+      (org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.activity.ComponentDialog)
+        .onBackPressedDispatcher
+        .onBackPressed()
+    }
+    compose.onNodeWithTag("include_session_logs_dialog").assertDoesNotExist()
+    compose.onNodeWithTag("exit_details_sheet").assertExists()
+    assertThat(
+        org.robolectric.Shadows.shadowOf(context.applicationContext as android.app.Application)
+          .nextStartedActivity,
+      )
+      .isNull()
+  }
+
+  @Test
+  fun sharingWithoutRetainedSessionSkipsThePrompt() {
+    openExitSheet(
+      history(
+        RawExit(
+          1_000,
+          1,
+          4,
+          null,
+          100,
+          0,
+          0,
+          "app",
+          stateSummary = encodeStateSummary("0001790399000-aaaaaaaa", null),
+        ),
+      ),
+      1,
+    )
+    compose.onNodeWithTag("open_exit_session").assertDoesNotExist()
+    compose.onNodeWithTag("share_exit_details").performScrollTo().performClick()
+    assertThat(sharedDetails()).doesNotContain("Session logs\n")
+    compose.onNodeWithTag("include_session_logs_dialog").assertDoesNotExist()
+  }
+
+  @Test
+  fun changingHistoryClearsAnOpenPrompt() {
+    val first =
+      history(
+        RawExit(
+          1_000,
+          3,
+          4,
+          null,
+          100,
+          0,
+          0,
+          "app",
+          stateSummary = encodeStateSummary("0001790399000-3f2a9c1b", null),
+        ),
+      )
+    val selected = androidx.compose.runtime.mutableStateOf(first)
+    compose.setContent {
+      MaterialTheme { LogViewer(EmptySource, onBack = {}, processExits = selected.value) }
+    }
+    compose.onNodeWithTag("status_tab").performClick()
+    compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exit_card_3"))
+    compose.onNodeWithTag("exit_card_3").performClick()
+    compose.onNodeWithTag("share_exit_details").performScrollTo().performClick()
+    compose.onNodeWithTag("include_session_logs_dialog").assertExists()
+    val next = history()
+    compose.runOnIdle { selected.value = next }
+    compose.onNodeWithTag("include_session_logs_dialog").assertDoesNotExist()
     compose.onNodeWithTag("exit_details_sheet").assertDoesNotExist()
   }
 

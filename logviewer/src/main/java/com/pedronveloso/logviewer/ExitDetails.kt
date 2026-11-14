@@ -64,16 +64,23 @@ internal fun ProcessExit.detailRows(): List<Pair<String, String>> = buildList {
   add("Trace" to (traceKind?.label ?: "None kept"))
 }
 
-/** The "Share details" file: the rows, then an ANR dump when there is one, as text. */
-internal fun ProcessExit.detailsText(trace: String?): String = buildString {
-  appendLine("Process exit")
-  detailRows().forEach { (label, value) -> appendLine("$label: $value") }
-  if (trace != null) {
-    appendLine()
-    appendLine("Trace")
-    append(trace)
+/** The shared text: exit fields, an optional raw ANR dump, then optional session logs. */
+internal fun ProcessExit.detailsText(trace: String?, sessionLogs: String? = null): String =
+  buildString {
+    appendLine("Process exit")
+    detailRows().forEach { (label, value) -> appendLine("$label: $value") }
+    if (trace != null) {
+      appendLine()
+      appendLine("Trace")
+      append(trace)
+    }
+    if (sessionLogs != null) {
+      appendLine()
+      appendLine()
+      appendLine("Session logs")
+      append(sessionLogs)
+    }
   }
-}
 
 /** `anr-20261112-193655.txt`: sortable, and safe on any file system it lands on. */
 internal fun ProcessExit.exportFileName(prefix: String, extension: String): String =

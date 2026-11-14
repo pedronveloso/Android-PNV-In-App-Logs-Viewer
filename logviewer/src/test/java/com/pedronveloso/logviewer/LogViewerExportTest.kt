@@ -95,6 +95,90 @@ class LogViewerExportTest {
     }
 
   @Test
+  fun detailsIncludeAllLinkedSessionEntriesAndPreserveTheirContent() =
+    kotlinx.coroutines.runBlocking {
+      val context = Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+      val history =
+        ProcessExitHistory(
+          context,
+          ExitReason.DEFAULT_ALERTS,
+          16,
+          { "redacted" },
+          kotlinx.coroutines.Dispatchers.Unconfined,
+        ) { _, _ ->
+          emptyList()
+        }
+      history.traceReader = { _, _, _ -> "raw ANR".byteInputStream() }
+      val exit =
+        ProcessExit(
+          1,
+          1,
+          ExitReason.Anr,
+          6,
+          null,
+          100,
+          0,
+          0,
+          "app",
+          hasTrace = true,
+          traceKind = TraceKind.AnrDump,
+          sessionId = "linked",
+        )
+      val entries =
+        listOf(
+          LogEntry(1, "linked", 1, 2, "Tag", "verbose message"),
+          LogEntry(2, "linked", 2, 6, "Tag", "custom source message", "exception trace"),
+        )
+      var requested: String? = null
+      var fail = false
+      var retained = entries
+      val source =
+        object : LogSource {
+          override val changes: kotlinx.coroutines.flow.Flow<Unit>? = null
+          override val capabilities =
+            kotlinx.coroutines.flow.MutableStateFlow(LogCapabilities(true, true, false, true))
+          override val health = kotlinx.coroutines.flow.MutableStateFlow(LogHealth())
+
+          override suspend fun sessions() =
+            listOf(LogSession("other", 2, true), LogSession("linked", 1, false))
+
+          override suspend fun entries(sessionId: String): List<LogEntry> {
+            requested = sessionId
+            if (fail) error("Could not read session")
+            return retained
+          }
+
+          override suspend fun clear(sessionId: String) = Unit
+        }
+      fun shared(): String {
+        val chooser = Shadows.shadowOf(context).nextStartedActivity
+        val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
+        assertThat(send.type).isEqualTo("text/plain")
+        assertThat(send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION).isNotEqualTo(0)
+        val uri = send.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)!!
+        return context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
+      }
+      shareExitDetails(context, history, exit, source)
+      assertThat(requested).isEqualTo("linked")
+      assertThat(shared()).endsWith("Trace\nraw ANR\n\nSession logs\n" + formatLogEntries(entries))
+      requested = null
+      shareExitDetails(context, history, exit)
+      assertThat(shared()).doesNotContain("Session logs\n")
+      assertThat(requested).isNull()
+      retained = emptyList()
+      shareExitDetails(context, history, exit, source)
+      assertThat(shared()).endsWith("Session logs\nNo retained log entries.")
+      fail = true
+      assertThat(
+          runCatching { shareExitDetails(context, history, exit, source) }
+            .exceptionOrNull()
+            ?.message,
+        )
+        .isEqualTo("Could not read session")
+      assertThat(Shadows.shadowOf(context).nextStartedActivity).isNull()
+    }
+
+  @Test
   fun exportsAreUniqueAndFailedWritesAreRemoved() {
     val context = Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
     val directory = File(context.cacheDir, "pnv-logviewer-exports")
