@@ -216,7 +216,8 @@ internal constructor(
 
   /**
    * Opens the trace Android kept for [exit], or null when there is none or it has since been
-   * overwritten (traces share a system-wide buffer). The caller closes the stream. A
+   * overwritten (traces share a system-wide buffer). The caller closes the stream. Platform traces
+   * are returned raw and are never passed through the redactor, including ANR text. A
    * [TraceKind.Tombstone] is binary; share it to a computer rather than showing it.
    */
   public suspend fun openTrace(exit: ProcessExit): InputStream? =
@@ -229,7 +230,10 @@ internal constructor(
       mutex.withLock {
         val loaded = mutableState.value as? ProcessExitState.Loaded ?: return@withLock
         val newest = loaded.pending.maxOfOrNull { it.timestampMillis } ?: return@withLock
-        prefs.edit(commit = true) { putLong(KEY_EXITS_SEEN, newest) }
+        synchronized(reviewLock) {
+          val seen = maxOf(prefs.getLong(KEY_EXITS_SEEN, 0L), newest)
+          prefs.edit(commit = true) { putLong(KEY_EXITS_SEEN, seen) }
+        }
         mutableState.value = loaded.copy(pending = emptyList())
       }
     }
@@ -272,13 +276,14 @@ internal constructor(
       traceKind =
         when {
           !raw.hasTrace -> null
-          raw.reasonCode == REASON_CRASH_NATIVE -> TraceKind.Tombstone
+          raw.reasonCode == REASON_CRASH_NATIVE && Build.VERSION.SDK_INT >= 31 ->
+            TraceKind.Tombstone
           // Android also keeps an ANR's dump when the process recovered and died later.
           else -> TraceKind.AnrDump
         },
       anr = raw.anr,
       sessionId = summary.sessionId,
-      appNote = summary.note?.let(::redacted),
+      appNote = summary.note,
       stateSummary = summary.foreign?.let(::redacted),
     )
   }
@@ -299,7 +304,10 @@ internal constructor(
       maxExits = count
     }
 
-    /** Applied to each exit's description before it enters [state]. */
+    /**
+     * Applied to descriptions and foreign summaries before they enter [state]. Library notes were
+     * redacted when written. Platform ANR dumps and tombstones remain raw.
+     */
     public fun redact(redact: ((String) -> String)?): Builder = apply { this.redact = redact }
 
     public fun build(): ProcessExitHistory =
@@ -307,6 +315,7 @@ internal constructor(
   }
 
   internal companion object {
+    private val reviewLock = Any()
     const val KEY_EXITS_SEEN = "process_exits_seen_until"
     const val DEFAULT_MAX_EXITS = 16
   }
@@ -411,9 +420,14 @@ internal fun decodeStateSummary(bytes: ByteArray?): StateSummary {
   if (text != null && text.startsWith(STATE_SUMMARY_PREFIX)) {
     val body = text.removePrefix(STATE_SUMMARY_PREFIX)
     val newline = body.indexOf('\n')
-    return if (newline < 0) StateSummary(body, null, null)
-    else
-      StateSummary(body.substring(0, newline), body.substring(newline + 1).ifEmpty { null }, null)
+    val sessionId = if (newline < 0) body else body.substring(0, newline)
+    if (Regex("\\d{13}-[0-9a-f]{8}").matches(sessionId)) {
+      return StateSummary(
+        sessionId,
+        if (newline < 0) null else body.substring(newline + 1).ifEmpty { null },
+        null,
+      )
+    }
   }
   val printable = text?.all { !it.isISOControl() || it == '\n' || it == '\t' } == true
   return StateSummary(

@@ -61,15 +61,13 @@ internal constructor(
     { appContext, id -> DiskJournal(appContext, id) },
   ) {
     processExits = ProcessExitHistory.Builder(context).redact(redact).build()
-    linkExitsToSessions = true
   }
 
   /** The app's exit history, shown on the Status tab; null when [Builder.processExits] is off. */
   public var processExits: ProcessExitHistory? = null
     private set
 
-  // Off for the internal constructor, so tests opt in; the builder and public constructor turn it
-  // on.
+  // Only the builder opts in; the deprecated constructor preserves host summary ownership.
   internal var linkExitsToSessions = false
   internal var summaryWriter: (Context, ByteArray) -> Unit = ::writeStateSummary
   private var exitNote: String? = null
@@ -77,14 +75,16 @@ internal constructor(
   /**
    * A short note Android keeps with this process's exit record, such as the feature in use, so a
    * later crash or memory-limit kill says what the app was doing. It is redacted, cut to fit
-   * Android's 128-byte limit next to the session ID, and needs [Builder.linkExitsToSessions].
-   * Android throttles these writes, so set it when the state changes, not on every frame. Keep
-   * personal data out of it.
+   * Android's 128-byte limit next to the session ID, and needs [Builder.linkExitsToSessions]. Saved
+   * notes retain the writer's redaction policy; reading history does not redact them again. Android
+   * throttles these writes, so set it when the state changes, not on every frame. Keep personal
+   * data out of it.
    */
   public fun setExitNote(note: String?) {
+    val redactedNote = note?.let(::safeRedact)
     val planted =
       synchronized(lock) {
-        exitNote = note?.let(::safeRedact)
+        exitNote = redactedNote
         this.planted
       }
     if (planted) writeExitTag()
@@ -128,8 +128,9 @@ internal constructor(
     }
 
     /**
-     * Applied to every message, tag and trace before it reaches memory or disk, and to exit
-     * descriptions.
+     * Applied to captured messages, tags and exception traces before storage, and to exit
+     * descriptions and foreign summaries. App notes are redacted once, when written. Platform
+     * process-exit traces (ANR dumps and tombstones) are raw, including in shared details.
      */
     public fun redact(redact: ((String) -> String)?): Builder = apply { this.redact = redact }
 
@@ -138,7 +139,8 @@ internal constructor(
     /**
      * Reads the exits Android recorded for the app and shows them on the Status tab, warning about
      * the reasons in [ProcessExitHistory.Builder.alertOn]. On by default; it only queries the
-     * system. [configure] runs after the capture's redactor is applied, so it can replace it.
+     * system. Disabling this also disables session linking, regardless of builder-call order.
+     * [configure] runs after the capture's redactor is applied, so it can replace it.
      */
     public fun processExits(
       enabled: Boolean = true,
@@ -151,8 +153,8 @@ internal constructor(
     /**
      * Tags the process with this capture's session ID through `setProcessStateSummary`, so an exit
      * opens the logs of the session that died. On by default. Turn it off if the app writes its own
-     * process state summary, which Android keeps only one of; the Status tab then shows those bytes
-     * as they are.
+     * process state summary, which Android keeps only one of; the Status tab shows its text or hex
+     * through the history redactor. Only effective when process exits are enabled.
      */
     public fun linkExitsToSessions(enabled: Boolean = true): Builder = apply {
       linkExitsToSessions = enabled

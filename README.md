@@ -4,7 +4,7 @@ A Compose log viewer for Android apps that use Timber. It can capture logs itsel
 from an app-provided `LogSource`. The library has no automatic initializer: adding the dependency
 alone does not plant a tree or collect logs.
 
-The repository has a `:logviewer` Android library and a `:sample` app. It uses AGP 9.4.1, Kotlin
+The repository has a `:logviewer` Android library and a `:sample` app. It uses AGP 9.5.1, Kotlin
 2.4.21, Compose BOM 2026.09.00, Java 17 bytecode, and minSdk 26.
 
 ## Include in a host app
@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.11.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.11.1")
 }
 ```
 
@@ -142,8 +142,12 @@ Tap an exit for its details sheet:
 - The log session the process was running, with a button to open its logs while the viewer still keeps them, and the app's note.
 
 Data that is better read on a computer is shared rather than shown:
-- **Share trace** appears when Android kept a trace. It sends an ANR's thread dump as `anr-<time>.txt`, or a native crash tombstone (Android 12+) as `tombstone-<time>.pb`. The tombstone is a protobuf following AOSP's [`tombstone.proto`](https://android.googlesource.com/platform/system/core/+/refs/heads/main/debuggerd/proto/tombstone.proto). Read it with AOSP's `pbtombstone`, or with `protoc --decode=Tombstone tombstone.proto < tombstone.pb`. Android keeps traces in a shared buffer, so an older one may already be gone.
-- **Share details** sends every field as `exit-<time>.txt`, with an ANR dump appended.
+- **Share trace** appears when Android kept a trace. It sends an ANR's thread dump as `anr-<time>-<unique>.txt`, or a native crash tombstone (Android 12+) as `tombstone-<time>-<unique>.pb`. The tombstone is a protobuf following AOSP's [`tombstone.proto`](https://android.googlesource.com/platform/system/core/+/refs/heads/main/debuggerd/proto/tombstone.proto). Read it with AOSP's `pbtombstone`, or with `protoc --decode=Tombstone tombstone.proto < tombstone.pb`. Android keeps traces in a shared buffer, so an older one may already be gone.
+- **Share details** sends every field as `exit-<time>-<unique>.txt`, with an ANR dump appended.
+
+ANR dumps and native tombstones are raw platform diagnostics. The redactor does not apply to
+`openTrace`, Share trace, or the ANR dump appended by Share details. These can contain sensitive
+data even when log redaction is enabled.
 
 Both use the same share chooser and app-private export folder as Share for logs.
 `processExits.openTrace(exit)` gives host apps the same trace stream.
@@ -153,7 +157,10 @@ To link exits to log sessions, `install()` tags the process through
 `capture.setExitNote("model: Voz")`; it is redacted and cut to fit Android's 128-byte limit. Android
 throttles these writes, so set the note when the state changes, and keep personal data out of it.
 Android keeps one summary per process, so an app that writes its own turns the link off with
-`.linkExitsToSessions(false)`; its bytes then show in the sheet as they are.
+`.linkExitsToSessions(false)`; its bytes show as text or hex through the history redactor.
+Disabling process-exit tracking also disables session linking, regardless of builder-call order.
+The deprecated constructor does not write process-state summaries; use the builder to enable linking.
+App notes are redacted only when written and retain that policy when read in later captures.
 
 Call `refresh()` to read the history again. An app that brings its own `LogSource` builds a
 history with `ProcessExitHistory.Builder(context)` and passes it to

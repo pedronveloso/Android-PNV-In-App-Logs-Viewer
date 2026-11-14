@@ -54,9 +54,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
@@ -82,6 +82,8 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -105,10 +107,7 @@ public fun LogViewer(
   processExits: ProcessExitHistory? = (source as? TimberLogCapture)?.processExits,
 ) {
   val capabilities by source.capabilities.collectAsState()
-  val exitState by
-    produceState<ProcessExitState?>(null, processExits) {
-      processExits?.state?.collect { value = it }
-    }
+  val exitState = key(processExits) { processExits?.state?.collectAsState()?.value }
   val pendingExits = exitState?.pendingExits.orEmpty()
   val liveUpdates = capabilities.hasLiveUpdates && source.changes != null
   val effectiveCapabilities = capabilities.copy(hasLiveUpdates = liveUpdates)
@@ -384,13 +383,19 @@ public fun LogViewer(
           onShareTrace = {
             scope.launch {
               runCatching { shareExitTrace(context, processExits, exit) }
-                .onFailure { error = it.message ?: "Could not share the trace" }
+                .onFailure {
+                  if (it is CancellationException) throw it
+                  error = it.message ?: "Could not share the trace"
+                }
             }
           },
           onShareDetails = {
             scope.launch {
               runCatching { shareExitDetails(context, processExits, exit) }
-                .onFailure { error = it.message ?: "Could not share the details" }
+                .onFailure {
+                  if (it is CancellationException) throw it
+                  error = it.message ?: "Could not share the details"
+                }
             }
           },
           onDismiss = { selectedExitKey = null },
@@ -860,10 +865,24 @@ internal fun shareLogs(context: Context, text: String) {
  */
 internal fun exportFile(context: Context, name: String, write: (OutputStream) -> Unit): File {
   val directory = File(context.cacheDir, "pnv-logviewer-exports")
-  check(directory.isDirectory || directory.mkdirs()) { "Could not prepare export" }
+  check(directory.isDirectory || directory.mkdirs() || directory.isDirectory) {
+    "Could not prepare export"
+  }
   val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
   directory.listFiles()?.filter { it.lastModified() < cutoff }?.forEach(File::delete)
-  return File(directory, name).apply { outputStream().use(write) }
+  val file =
+    File.createTempFile(
+      name.substringBeforeLast('.') + "-",
+      "." + name.substringAfterLast('.'),
+      directory,
+    )
+  try {
+    file.outputStream().use(write)
+    return file
+  } catch (failure: Throwable) {
+    file.delete()
+    throw failure
+  }
 }
 
 internal fun launchShare(
@@ -907,6 +926,7 @@ internal suspend fun shareExitTrace(
         }
       }
     }
+  currentCoroutineContext().ensureActive()
   launchShare(
     context,
     file,
@@ -934,6 +954,7 @@ internal suspend fun shareExitDetails(
         it.write(exit.detailsText(trace).toByteArray())
       }
     }
+  currentCoroutineContext().ensureActive()
   launchShare(context, file, "text/plain", "exit", "Share exit details")
 }
 

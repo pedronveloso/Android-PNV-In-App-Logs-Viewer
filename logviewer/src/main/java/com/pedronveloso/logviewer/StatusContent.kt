@@ -126,6 +126,7 @@ private fun LazyListScope.processExitItems(
         StatusCard(
           exit.statusMessage(isProblem = false),
           showIcon = false,
+          accessibilityState = "Previous exit",
           onClick = { onSelect(exit) },
           testTag = "exit_card_${exit.pid}",
         )
@@ -164,6 +165,7 @@ private fun StatusCard(
   showIcon: Boolean = true,
   onClick: (() -> Unit)? = null,
   testTag: String? = null,
+  accessibilityState: String = if (message.isProblem) "Action needed" else "Healthy",
 ) {
   val statusColor =
     if (message.isProblem) problemColor()
@@ -172,7 +174,7 @@ private fun StatusCard(
     Modifier.fillMaxWidth()
       .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
       .semantics(mergeDescendants = true) {
-        stateDescription = if (message.isProblem) "Action needed" else "Healthy"
+        stateDescription = accessibilityState
         if (onClick != null)
           onClick(label = "Show details") {
             onClick()

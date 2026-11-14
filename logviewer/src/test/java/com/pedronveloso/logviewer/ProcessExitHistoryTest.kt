@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -101,6 +102,32 @@ class ProcessExitHistoryTest {
     // Only what is newer than the dismissed exits comes back.
     assertThat(history(listOf(raw(3_000, 6)) + exits).loaded.pending.map { it.timestampMillis })
       .containsExactly(3_000L)
+  }
+
+  @Test
+  fun acknowledgingOlderHistoryNeverRewindsTheSharedTimestamp() {
+    val older = history(listOf(raw(1_000, 4)))
+    val newer = history(listOf(raw(2_000, 4)))
+    runBlocking {
+      newer.acknowledge()
+      older.acknowledge()
+    }
+    newer.refresh()
+    assertThat(newer.loaded.pending).isEmpty()
+    assertThat(history(listOf(raw(2_000, 4))).loaded.pending).isEmpty()
+  }
+
+  @Test
+  fun concurrentAcknowledgmentsPreserveTheNewestTimestamp() = runBlocking {
+    val histories = (1L..8L).map { history(listOf(raw(it * 1_000, 4))) }
+    kotlinx.coroutines.coroutineScope {
+      histories
+        .map { item ->
+          async(kotlinx.coroutines.Dispatchers.Default) { item.acknowledge() }
+        }
+        .forEach { it.await() }
+    }
+    assertThat(history(listOf(raw(8_000, 4))).loaded.pending).isEmpty()
   }
 
   @Test

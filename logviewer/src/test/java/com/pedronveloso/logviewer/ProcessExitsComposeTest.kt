@@ -2,6 +2,7 @@ package com.pedronveloso.logviewer
 
 import android.content.Context
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -72,6 +73,25 @@ class ProcessExitsComposeTest {
   }
 
   @Test
+  fun replacingOrRemovingHistoryClearsPreviousExitState() {
+    val first = history(RawExit(1_000, 42, 4, null, 100, 0, 0, "app"))
+    val second = history()
+    val selected = androidx.compose.runtime.mutableStateOf<ProcessExitHistory?>(first)
+    compose.setContent {
+      MaterialTheme { LogViewer(EmptySource, onBack = {}, processExits = selected.value) }
+    }
+    compose.onNodeWithTag("status_tab_warning", useUnmergedTree = true).assertExists()
+    compose.runOnIdle { selected.value = second }
+    compose.onNodeWithTag("status_tab_warning", useUnmergedTree = true).assertDoesNotExist()
+    compose.runOnIdle { selected.value = first }
+    compose.onNodeWithTag("status_tab_warning", useUnmergedTree = true).assertExists()
+    compose.runOnIdle { selected.value = null }
+    compose.onNodeWithTag("status_tab_warning", useUnmergedTree = true).assertDoesNotExist()
+    compose.onNodeWithTag("status_tab").performClick()
+    compose.onNodeWithText("Previous exits").assertDoesNotExist()
+  }
+
+  @Test
   fun exitsThatAreNotFlaggedDoNotWarn() {
     val history = history(RawExit(1_000, 42, 10, "remove task", 400, 0, 0, "app"))
     compose.setContent {
@@ -79,6 +99,15 @@ class ProcessExitsComposeTest {
     }
     compose.onNodeWithTag("status_tab").performClick()
     compose.onNode(hasScrollAction()).performScrollToNode(hasText("Previous exits"))
+    compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exit_card_42"))
+    compose
+      .onNodeWithTag("exit_card_42")
+      .assert(
+        androidx.compose.ui.test.SemanticsMatcher.expectValue(
+          androidx.compose.ui.semantics.SemanticsProperties.StateDescription,
+          "Previous exit",
+        ),
+      )
     assertThat(
         compose
           .onAllNodesWithTag("status_tab_warning", useUnmergedTree = true)
@@ -119,7 +148,7 @@ class ProcessExitsComposeTest {
 
   @Test
   fun openSessionLogsJumpsToThatSession() {
-    val tag = encodeStateSummary("old", null)
+    val tag = encodeStateSummary("0001790399000-3f2a9c1b", null)
     openExitSheet(
       history(
         RawExit(1_000, 3, 13, "MemoryLimiter:AnonSwap", 100, 0, 0, "app", stateSummary = tag),
@@ -144,10 +173,11 @@ class ProcessExitsComposeTest {
     override val health: StateFlow<LogHealth> = MutableStateFlow(LogHealth())
 
     override suspend fun sessions() =
-      listOf(LogSession("current", 2, true), LogSession("old", 1, false))
+      listOf(LogSession("current", 2, true), LogSession("0001790399000-3f2a9c1b", 1, false))
 
     override suspend fun entries(sessionId: String) =
-      if (sessionId == "old") listOf(LogEntry(0, "old", 1, 4, "Tag", "entry in old"))
+      if (sessionId == "0001790399000-3f2a9c1b")
+        listOf(LogEntry(0, "0001790399000-3f2a9c1b", 1, 4, "Tag", "entry in old"))
       else emptyList()
 
     override suspend fun clear(sessionId: String) = Unit
