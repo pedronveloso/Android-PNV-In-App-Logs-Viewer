@@ -19,7 +19,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Why Android ended one of the app's processes, with the copy the Status tab shows for it. */
-public enum class ExitReason(public val label: String, public val explanation: String) {
+public enum class ExitReason(internal val label: String, internal val explanation: String) {
   MemoryLimit(
     "Memory limit",
     "Android's memory limiter stopped the app for using more RAM than its per-app limit allows.",
@@ -45,9 +45,9 @@ public enum class ExitReason(public val label: String, public val explanation: S
   Other("Other", "The system gave a reason outside the standard ones."),
   Unknown("Unknown", "Android didn't record why the app stopped.");
 
-  public companion object {
+  internal companion object {
     /** What [ProcessExitHistory] flags unless the app chooses otherwise. */
-    public val DEFAULT_ALERTS: Set<ExitReason> = setOf(MemoryLimit, Crash, NativeCrash, Anr)
+    val DEFAULT_ALERTS: Set<ExitReason> = setOf(MemoryLimit, Crash, NativeCrash, Anr)
   }
 }
 
@@ -80,7 +80,7 @@ public data class ProcessExit(
   public val stateSummary: String? = null,
 ) {
   /** Where the app was when it stopped, which decides how much memory it may use. */
-  public val whereText: String
+  internal val whereText: String
     get() =
       when {
         importance <= IMPORTANCE_FOREGROUND -> "It was on screen."
@@ -92,7 +92,7 @@ public data class ProcessExit(
       }
 
   /** What [status] means for this reason, or null when it carries nothing. */
-  public val statusText: String?
+  internal val statusText: String?
     get() =
       when (reason) {
         ExitReason.Signaled,
@@ -107,7 +107,7 @@ public data class ProcessExit(
       }
 }
 
-public enum class TraceKind(public val label: String) {
+public enum class TraceKind(internal val label: String) {
   /** The thread dump Android took for an ANR; plain text. */
   AnrDump("ANR thread dump"),
   /** A native crash tombstone, a protobuf following AOSP's `tombstone.proto` (API 31+). */
@@ -123,7 +123,7 @@ public data class AnrDetails(
   public val userPerceptible: Boolean,
   public val anrId: Int,
 ) {
-  public val typeLabel: String
+  internal val typeLabel: String
     get() =
       when (type) {
         1 -> "No focused window"
@@ -172,7 +172,7 @@ public sealed interface ProcessExitState {
 }
 
 /** The exits still to review; empty in every state but [ProcessExitState.Loaded]. */
-public val ProcessExitState.pendingExits: List<ProcessExit>
+internal val ProcessExitState.pendingExits: List<ProcessExit>
   get() = (this as? ProcessExitState.Loaded)?.pending.orEmpty()
 
 /**
@@ -202,6 +202,16 @@ internal constructor(
   private val mutableState =
     MutableStateFlow(if (supported) ProcessExitState.Loading else ProcessExitState.Unsupported)
   public val state: StateFlow<ProcessExitState> = mutableState.asStateFlow()
+
+  private val mutableWarnings = MutableStateFlow(NoLogWarnings)
+
+  /** Outstanding diagnostics for badges and other host UI, including after acknowledgement. */
+  public val warnings: StateFlow<LogWarnings> = mutableWarnings.asStateFlow()
+
+  private fun publish(state: ProcessExitState) {
+    mutableState.value = state
+    mutableWarnings.value = state.warningSummary()
+  }
 
   init {
     refresh()
@@ -234,7 +244,7 @@ internal constructor(
           val seen = maxOf(prefs.getLong(KEY_EXITS_SEEN, 0L), newest)
           prefs.edit(commit = true) { putLong(KEY_EXITS_SEEN, seen) }
         }
-        mutableState.value = loaded.copy(pending = emptyList())
+        publish(loaded.copy(pending = emptyList()))
       }
     }
   }
@@ -243,14 +253,15 @@ internal constructor(
     runCatching { readExits(appContext, maxExits).take(maxExits).map(::toExit) }
       .onSuccess { exits ->
         val seen = prefs.getLong(KEY_EXITS_SEEN, 0L)
-        mutableState.value =
+        publish(
           ProcessExitState.Loaded(
             exits,
             exits.filter { it.reason in alertOn && it.timestampMillis > seen },
-          )
+          ),
+        )
       }
       .onFailure {
-        mutableState.value = ProcessExitState.Failed(it.message ?: "Could not read exit history")
+        publish(ProcessExitState.Failed(it.message ?: "Could not read exit history"))
       }
   }
 

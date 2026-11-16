@@ -35,16 +35,11 @@ internal constructor(
   private val clock: () -> Long,
   private val ioDispatcher: CoroutineDispatcher,
   private val maxPendingBytes: Int,
+  redactionOption: RedactionOption = RedactionOption.NOT_SPECIFIED,
   private val createJournal: suspend (Context, String) -> Journal,
 ) : LogSource {
-  @Deprecated(
-    "Use TimberLogCapture.Builder, which also configures process exit tracking.",
-    ReplaceWith(
-      "TimberLogCapture.Builder(context).capacity(capacity)" +
-        ".persistAcrossCrashes(persistAcrossCrashes).redact(redact).clock(clock).build()",
-    ),
-  )
-  public constructor(
+  /** Internal convenience constructor for capture tests. Host apps use [Builder]. */
+  internal constructor(
     context: Context,
     capacity: Int = DEFAULT_CAPACITY,
     persistAcrossCrashes: Boolean = false,
@@ -58,7 +53,7 @@ internal constructor(
     clock,
     Dispatchers.IO,
     MAX_PENDING_BYTES,
-    { appContext, id -> DiskJournal(appContext, id) },
+    createJournal = { appContext, id -> DiskJournal(appContext, id) },
   ) {
     processExits = ProcessExitHistory.Builder(context).redact(redact).build()
   }
@@ -67,7 +62,15 @@ internal constructor(
   public var processExits: ProcessExitHistory? = null
     private set
 
-  // Only the builder opts in; the deprecated constructor preserves host summary ownership.
+  /** Non-null reactive warning summary, empty when process-exit tracking is disabled. */
+  public val warnings: StateFlow<LogWarnings> by lazy {
+    processExits?.warnings ?: MutableStateFlow(NoLogWarnings).asStateFlow()
+  }
+
+  internal var viewerOptions: LogViewerOptions = LogViewerOptions.Default
+    private set
+
+  // Only the public builder opts in to writing process summaries.
   internal var linkExitsToSessions = false
   internal var summaryWriter: (Context, ByteArray) -> Unit = ::writeStateSummary
   private var exitNote: String? = null
@@ -111,10 +114,12 @@ internal constructor(
     private var capacity = DEFAULT_CAPACITY
     private var persistAcrossCrashes = false
     private var redact: ((String) -> String)? = null
+    private var redactionOption = RedactionOption.NOT_SPECIFIED
     private var clock: () -> Long = System::currentTimeMillis
     private var processExitsEnabled = true
     private var configureProcessExits: ProcessExitHistory.Builder.() -> Unit = {}
     private var linkExitsToSessions = true
+    private var viewerOptions = LogViewerOptions.Default
 
     /** How many entries the current session keeps in memory. */
     public fun capacity(capacity: Int): Builder = apply {
@@ -132,9 +137,22 @@ internal constructor(
      * descriptions and foreign summaries. App notes are redacted once, when written. Platform
      * process-exit traces (ANR dumps and tombstones) are raw, including in shared details.
      */
-    public fun redact(redact: ((String) -> String)?): Builder = apply { this.redact = redact }
+    public fun redact(redact: ((String) -> String)?): Builder = apply {
+      this.redact = redact
+      redactionOption = RedactionOption.NOT_SPECIFIED
+    }
 
-    public fun clock(clock: () -> Long): Builder = apply { this.clock = clock }
+    /**
+     * Leaves captured text unchanged. [RedactionOption.NO_REDACTION] explicitly opts out and
+     * suppresses the Status redaction warning; [RedactionOption.NOT_SPECIFIED] keeps the warning.
+     * Replaces any previous callback. The last call to either [redact] overload wins.
+     */
+    public fun redact(option: RedactionOption): Builder = apply {
+      redact = null
+      redactionOption = option
+    }
+
+    internal fun clock(clock: () -> Long): Builder = apply { this.clock = clock }
 
     /**
      * Reads the exits Android recorded for the app and shows them on the Status tab, warning about
@@ -160,6 +178,9 @@ internal constructor(
       linkExitsToSessions = enabled
     }
 
+    /** Default toolbar options used by [LogViewer] for this capture. */
+    public fun viewerOptions(options: LogViewerOptions): Builder = apply { viewerOptions = options }
+
     public fun build(): TimberLogCapture =
       TimberLogCapture(
           context,
@@ -169,10 +190,12 @@ internal constructor(
           clock,
           Dispatchers.IO,
           MAX_PENDING_BYTES,
+          redactionOption = redactionOption,
         ) { appContext, id ->
           DiskJournal(appContext, id)
         }
         .also { capture ->
+          capture.viewerOptions = viewerOptions
           if (processExitsEnabled) {
             capture.processExits =
               ProcessExitHistory.Builder(context)
@@ -206,7 +229,14 @@ internal constructor(
   override val changes: Flow<Unit> = revision.map {}
   private val mutableCapabilities =
     MutableStateFlow(
-      LogCapabilities(true, persistAcrossCrashes, true, redact != null, isLibraryCapture = true),
+      LogCapabilities(
+        true,
+        persistAcrossCrashes,
+        true,
+        redact != null,
+        isLibraryCapture = true,
+        redactionOption = redactionOption,
+      ),
     )
   override val capabilities: StateFlow<LogCapabilities> = mutableCapabilities.asStateFlow()
   private val mutableHealth = MutableStateFlow(LogHealth(installed = false))

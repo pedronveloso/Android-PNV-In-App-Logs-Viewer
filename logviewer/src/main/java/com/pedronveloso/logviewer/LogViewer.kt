@@ -106,6 +106,8 @@ public fun LogViewer(
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
   processExits: ProcessExitHistory? = (source as? TimberLogCapture)?.processExits,
+  options: LogViewerOptions =
+    (source as? TimberLogCapture)?.viewerOptions ?: LogViewerOptions.Default,
 ) {
   val capabilities by source.capabilities.collectAsState()
   val exitState = key(processExits) { processExits?.state?.collectAsState()?.value }
@@ -132,6 +134,7 @@ public fun LogViewer(
   var follow by rememberSaveable(source) { mutableStateOf(true) }
   var refresh by remember { mutableIntStateOf(0) }
   var error by remember { mutableStateOf<String?>(null) }
+  var exporting by remember { mutableStateOf(false) }
   // A key rather than the exit, so the open sheet survives rotation without serializing it.
   var selectedExitKey by rememberSaveable(processExits) { mutableStateOf<String?>(null) }
   val selectedExit =
@@ -157,6 +160,23 @@ public fun LogViewer(
   val listState = rememberLazyListState()
   val isDragged by listState.interactionSource.collectIsDraggedAsState()
   val filtered = remember(allEntries, filter) { allEntries.filter { it.matches(filter) } }
+  fun exportLogs(onExport: suspend (LogExport) -> Unit) {
+    if (exporting) return
+    exporting = true
+    val snapshot = filtered.toList()
+    scope.launch {
+      try {
+        onExport(prepareLogExport(context, snapshot))
+        error = null
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: Exception) {
+        error = failure.message ?: "Could not export logs"
+      } finally {
+        exporting = false
+      }
+    }
+  }
   val warningCount =
     remember(allEntries) { allEntries.count { it.priority == LogLevel.WARN.priority } }
   val errorCount =
@@ -230,13 +250,16 @@ public fun LogViewer(
       topBar = {
         LogViewerTopBar(
           showActions = tab == 0,
-          canClear = capabilities.canClear && selectedSession != null,
+          canClear = options.showClearButton && capabilities.canClear && selectedSession != null,
+          showShare = options.showShareButton,
+          exportAction = options.exportAction,
+          exporting = exporting,
+          onCustomExport = { options.exportAction?.let { exportLogs(it.onExport) } },
           onBack = onBack,
           canRefresh = !liveUpdates,
           onRefresh = { refresh++ },
           onShare = {
-            runCatching { shareLogs(context, formatLogEntries(filtered)) }
-              .onFailure { error = it.message ?: "Could not share logs" }
+            exportLogs { launchShare(context, it.file, it.mimeType, "logs", "Share logs") }
           },
           onClear = {
             selectedSession?.let { sessionId ->
@@ -495,6 +518,10 @@ private fun LogViewerTopBar(
   onRefresh: () -> Unit,
   onShare: () -> Unit,
   onClear: () -> Unit,
+  showShare: Boolean = true,
+  exportAction: ExportAction? = null,
+  exporting: Boolean = false,
+  onCustomExport: () -> Unit = {},
   selectedTab: Int? = null,
   onSelectTab: (Int) -> Unit = {},
   pendingExits: Int = 0,
@@ -532,11 +559,23 @@ private fun LogViewerTopBar(
             Icon(Icons.Default.Refresh, contentDescription = null)
           }
         }
-        IconButton(
-          onClick = onShare,
-          modifier = Modifier.semantics { contentDescription = "Share visible logs" },
-        ) {
-          Icon(Icons.Default.Share, contentDescription = null)
+        if (showShare) {
+          IconButton(
+            onClick = onShare,
+            enabled = !exporting,
+            modifier = Modifier.semantics { contentDescription = "Share visible logs" },
+          ) {
+            Icon(Icons.Default.Share, contentDescription = null)
+          }
+        }
+        if (exportAction != null) {
+          IconButton(
+            onClick = onCustomExport,
+            enabled = !exporting,
+            modifier = Modifier.semantics { contentDescription = exportAction.contentDescription },
+          ) {
+            exportAction.icon()
+          }
         }
         if (canClear) {
           IconButton(
@@ -878,6 +917,23 @@ private fun NoMatchingEntriesPreview() {
     Box(Modifier.width(420.dp).height(180.dp)) { LogEmptyState(noEntries = false) }
   }
 }
+
+internal suspend fun prepareLogExport(context: Context, entries: List<LogEntry>): LogExport =
+  withContext(Dispatchers.IO) {
+    val text = formatLogEntries(entries)
+    val file =
+      exportFile(context, "logs-${System.currentTimeMillis()}.txt") {
+        it.write(text.toByteArray(Charsets.UTF_8))
+      }
+    LogExport(
+      file,
+      FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.pnvlogviewer.fileprovider",
+        file,
+      ),
+    )
+  }
 
 internal fun shareLogs(context: Context, text: String) {
   val file =
