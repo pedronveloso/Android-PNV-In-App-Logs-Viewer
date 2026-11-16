@@ -14,7 +14,7 @@ only to the debug variant:
 
 ```kotlin
 dependencies {
-    debugImplementation("io.github.pedronveloso:logviewer:0.12.0")
+    debugImplementation("io.github.pedronveloso:logviewer:0.13.0")
 }
 ```
 
@@ -66,8 +66,7 @@ capture.install()
 ```
 
 Every builder option has a default, so `TimberLogCapture.Builder(this).build()` is a valid
-memory-only capture. The older `TimberLogCapture(context, ...)` constructor still works but is
-deprecated in favor of the builder.
+memory-only capture. Construct captures through the builder.
 
 Then render it inside the app's theme and navigation:
 
@@ -123,17 +122,28 @@ TimberLogCapture.Builder(this)
 TimberLogCapture.Builder(this).processExits(enabled = false).build()
 ```
 
-`capture.processExits` exposes the history to the host app: `state` is a
-`StateFlow<ProcessExitState>`, so the app's own UI can react, for example with a badge on its
-debug menu entry, and `acknowledge()` marks everything pending as reviewed:
+For host badges, collect the non-null `capture.warnings` flow with Compose's lifecycle-aware
+collector (add `androidx.lifecycle:lifecycle-runtime-compose` to the host):
 
 ```kotlin
-val exits = capture.processExits ?: return
-val state by exits.state.collectAsStateWithLifecycle()
-BadgedBox(badge = { if (state.pendingExits.isNotEmpty()) Badge() }) {
+val warnings by capture.warnings.collectAsStateWithLifecycle()
+BadgedBox(badge = { if (warnings.hasWarnings) Badge { Text("${warnings.totalCount}") } }) {
   Icon(Icons.Outlined.BugReport, contentDescription = "Logs")
 }
 ```
+
+This is a `StateFlow<LogWarnings>` for Compose or ordinary coroutine collectors. `warnings.warnings`
+is a list of `LogWarning(type, count)` values with nonzero counts; currently the enum type is
+`WarningType.PendingProcessExit`. Future versions may add categories, so handle unknown enum values
+with a fallback when presenting them. WARN/ERROR log lines and optional configuration advice do not
+contribute to this summary. Disabled tracking, unsupported platforms, loading and failed history
+reads contribute no warnings; use `capture.processExits?.state` if you need to distinguish those
+states. `processExits.acknowledge()` clears pending warnings and persists that choice. Refreshing
+history updates the summary automatically. Apps that bring their own `LogSource` can collect
+`ProcessExitHistory.warnings` in the same way.
+
+`capture.processExits` remains available for integrations that need the full history, raw platform
+fields or trace streams. Its `state` is a `StateFlow<ProcessExitState>`.
 
 Tap an exit for its details sheet:
 - Android's description and the exit status (an exit code, or the signal, such as `Signal 9 (SIGKILL)`).
@@ -159,7 +169,6 @@ throttles these writes, so set the note when the state changes, and keep persona
 Android keeps one summary per process, so an app that writes its own turns the link off with
 `.linkExitsToSessions(false)`; its bytes show as text or hex through the history redactor.
 Disabling process-exit tracking also disables session linking, regardless of builder-call order.
-The deprecated constructor does not write process-state summaries; use the builder to enable linking.
 App notes are redacted only when written and retain that policy when read in later captures.
 
 Call `refresh()` to read the history again. An app that brings its own `LogSource` builds a
@@ -198,6 +207,65 @@ Status cannot inspect arbitrary Timber trees. For an external source it reports 
 redaction as claims made by the host app and displays any read or write errors the adapter exposes.
 The viewer uses the host's `MaterialTheme`; it does not depend on Lazulite or AltSea styles.
 
+## Toolbar actions
+
+Configure the built-in log Share and Clear buttons with `LogViewerOptions.Builder`. Both default
+to visible; Clear is also hidden for read-only sources. An optional custom export button receives
+`LogExport`, containing the actual temporary `File`, a FileProvider content `uri`, and `mimeType`:
+
+```kotlin
+val options = remember {
+  LogViewerOptions.Builder()
+    .showShareButton(false)
+    .showClearButton(false)
+    .exportAction(
+      contentDescription = "Send logs to support",
+      icon = { Icon(Icons.Outlined.Send, contentDescription = null) },
+      onExport = { export ->
+        // A suspend callback: use export.file for an upload, or export.uri for another app.
+        // Move blocking file/network work to Dispatchers.IO.
+        supportUploader.upload(export.file)
+      },
+    )
+    .build()
+}
+LogViewer(source = capture, onBack = onBack, options = options)
+```
+
+The viewer creates the UTF-8 file off the UI thread, using exactly the selected session's visible
+entries after search and level filters, including separate exception traces. No extra redaction is
+applied to caller-provided sources. The callback runs on the UI coroutine and can suspend; repeated
+export taps are disabled until it completes, exceptions appear in the viewer, and leaving the viewer
+cancels the operation. Copy the file for durable work: it lives in private cache storage and exports
+older than a day are deleted on a later export. When sending `uri` to another app, set
+`FLAG_GRANT_READ_URI_PERMISSION` and include it in `ClipData` and `EXTRA_STREAM`.
+
+You can also set defaults on `TimberLogCapture.Builder(context).viewerOptions(options).build()`;
+`LogViewer` uses them automatically for that capture. An explicit `options` argument overrides
+them and also works with any external `LogSource`. The custom button appears beside Share and Clear
+on the Logs tab. These options control log toolbar actions; Status diagnostic sharing is separate.
+
+The debug sample detects [LocalSend](https://localsend.org/) on each resume, loads its icon from
+Android, and offers **Send logs with LocalSend** only when its text-file share activity is available.
+It sends directly to LocalSend with a temporary read grant. Install LocalSend, open the sample's
+Logs screen, and tap its icon to choose a nearby device. If LocalSend is removed, the button goes
+away on resume; a removal between resume and a tap is reported in the viewer. Detection uses a
+package-scoped visibility query in debug/R8 only; release has no viewer or LocalSend integration.
+
+## API changes in 0.13.0
+
+This pre-1.0 release narrows the public API. Migrate direct `TimberLogCapture(...)` construction to
+`TimberLogCapture.Builder(context)…build()`. The clock override is an internal test seam.
+For badges, replace `state.pendingExits.isNotEmpty()` with `capture.warnings` as shown above.
+Advanced history consumers can read `(state as? ProcessExitState.Loaded)?.pending.orEmpty()`.
+
+Viewer-only types and helpers (`LogLevel`, `LogFilter`, `matches`, `formatLogEntries`, `StatusMessage`,
+`statusMessages`, and formatted exit labels/text) are now internal. Use the custom export callback
+for the viewer's text format; use platform priority constants and raw exit fields for custom UI.
+The default alert set is also internal; `alertOn(setOf(...))` explicitly selects the desired reasons.
+The log-source contract and its data models, redactor, capture lifecycle, process-exit configuration,
+history, acknowledgement and trace access remain public for custom integrations.
+
 ## Adaptive viewer layout
 
 The viewer adapts to the width available inside its host, including split-screen windows.
@@ -217,7 +285,10 @@ Elapsed times in the list and tablet detail pane compare adjacent visible entrie
 ## Try the sample
 
 Run `./gradlew :logviewer:testDebugUnitTest :sample:assembleDebug :sample:assembleRelease`, then
-install and launch the debug sample. Generate logs, open Logs, and use search, severity chips,
+install and launch the debug sample. On the home screen, toggle Share, Clear logs, LocalSend,
+and process exit history before opening Logs. These choices survive rotation and returning from
+the viewer; the LocalSend toggle is available only while LocalSend is installed. Generate logs,
+open Logs, and use search, severity chips,
 Follow, share, and Status. Tap **Crash app to test recovery**, relaunch the sample, open
 Logs, and select the previous session. The sample's release variant contains no viewer dependency
 or viewer screen.

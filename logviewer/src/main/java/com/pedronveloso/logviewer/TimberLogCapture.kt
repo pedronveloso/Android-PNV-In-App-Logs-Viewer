@@ -37,14 +37,8 @@ internal constructor(
   private val maxPendingBytes: Int,
   private val createJournal: suspend (Context, String) -> Journal,
 ) : LogSource {
-  @Deprecated(
-    "Use TimberLogCapture.Builder, which also configures process exit tracking.",
-    ReplaceWith(
-      "TimberLogCapture.Builder(context).capacity(capacity)" +
-        ".persistAcrossCrashes(persistAcrossCrashes).redact(redact).clock(clock).build()",
-    ),
-  )
-  public constructor(
+  /** Internal convenience constructor for capture tests. Host apps use [Builder]. */
+  internal constructor(
     context: Context,
     capacity: Int = DEFAULT_CAPACITY,
     persistAcrossCrashes: Boolean = false,
@@ -67,7 +61,15 @@ internal constructor(
   public var processExits: ProcessExitHistory? = null
     private set
 
-  // Only the builder opts in; the deprecated constructor preserves host summary ownership.
+  /** Non-null reactive warning summary, empty when process-exit tracking is disabled. */
+  public val warnings: StateFlow<LogWarnings> by lazy {
+    processExits?.warnings ?: MutableStateFlow(NoLogWarnings).asStateFlow()
+  }
+
+  internal var viewerOptions: LogViewerOptions = LogViewerOptions.Default
+    private set
+
+  // Only the public builder opts in to writing process summaries.
   internal var linkExitsToSessions = false
   internal var summaryWriter: (Context, ByteArray) -> Unit = ::writeStateSummary
   private var exitNote: String? = null
@@ -115,6 +117,7 @@ internal constructor(
     private var processExitsEnabled = true
     private var configureProcessExits: ProcessExitHistory.Builder.() -> Unit = {}
     private var linkExitsToSessions = true
+    private var viewerOptions = LogViewerOptions.Default
 
     /** How many entries the current session keeps in memory. */
     public fun capacity(capacity: Int): Builder = apply {
@@ -134,7 +137,7 @@ internal constructor(
      */
     public fun redact(redact: ((String) -> String)?): Builder = apply { this.redact = redact }
 
-    public fun clock(clock: () -> Long): Builder = apply { this.clock = clock }
+    internal fun clock(clock: () -> Long): Builder = apply { this.clock = clock }
 
     /**
      * Reads the exits Android recorded for the app and shows them on the Status tab, warning about
@@ -160,6 +163,9 @@ internal constructor(
       linkExitsToSessions = enabled
     }
 
+    /** Default toolbar options used by [LogViewer] for this capture. */
+    public fun viewerOptions(options: LogViewerOptions): Builder = apply { viewerOptions = options }
+
     public fun build(): TimberLogCapture =
       TimberLogCapture(
           context,
@@ -173,6 +179,7 @@ internal constructor(
           DiskJournal(appContext, id)
         }
         .also { capture ->
+          capture.viewerOptions = viewerOptions
           if (processExitsEnabled) {
             capture.processExits =
               ProcessExitHistory.Builder(context)

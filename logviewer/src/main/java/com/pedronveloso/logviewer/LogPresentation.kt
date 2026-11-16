@@ -5,7 +5,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-public enum class LogLevel(public val priority: Int, public val shortLabel: String) {
+internal enum class LogLevel(internal val priority: Int, internal val shortLabel: String) {
   VERBOSE(Log.VERBOSE, "V"),
   DEBUG(Log.DEBUG, "D"),
   INFO(Log.INFO, "I"),
@@ -13,25 +13,25 @@ public enum class LogLevel(public val priority: Int, public val shortLabel: Stri
   ERROR(Log.ERROR, "E"),
   ASSERT(Log.ASSERT, "A");
 
-  public companion object {
-    public fun fromPriority(priority: Int): LogLevel =
+  internal companion object {
+    internal fun fromPriority(priority: Int): LogLevel =
       entries.firstOrNull { it.priority == priority } ?: DEBUG
   }
 }
 
-public data class LogFilter(
-  public val minimumLevel: LogLevel = LogLevel.VERBOSE,
-  public val query: String = "",
+internal data class LogFilter(
+  internal val minimumLevel: LogLevel = LogLevel.VERBOSE,
+  internal val query: String = "",
 )
 
-public fun LogEntry.matches(filter: LogFilter): Boolean =
+internal fun LogEntry.matches(filter: LogFilter): Boolean =
   priority >= filter.minimumLevel.priority &&
     (filter.query.isBlank() ||
       message.contains(filter.query, ignoreCase = true) ||
       tag?.contains(filter.query, ignoreCase = true) == true)
 
 /** Render only the selected entries, appending a separately stored throwable once. */
-public fun formatLogEntries(entries: List<LogEntry>): String {
+internal fun formatLogEntries(entries: List<LogEntry>): String {
   val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
   return entries.joinToString("\n\n") { entry ->
     buildString {
@@ -67,14 +67,14 @@ internal fun formatElapsedTime(previousMillis: Long?, currentMillis: Long): Stri
 internal fun formatSessionDate(timestamp: Long): String =
   SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestamp))
 
-public data class StatusMessage(
-  public val title: String,
-  public val detail: String,
-  public val isProblem: Boolean,
+internal data class StatusMessage(
+  internal val title: String,
+  internal val detail: String,
+  internal val isProblem: Boolean,
 )
 
 /** Pure status rules shared by the UI and tests. */
-public fun statusMessages(capabilities: LogCapabilities, health: LogHealth): List<StatusMessage> =
+internal fun statusMessages(capabilities: LogCapabilities, health: LogHealth): List<StatusMessage> =
   buildList {
     if (health.installed == false) {
       add(

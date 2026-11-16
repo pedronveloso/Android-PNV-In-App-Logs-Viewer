@@ -44,6 +44,31 @@ class LogViewerExportTest {
   }
 
   @Test
+  fun customExportUsesSameTextAsShareAndProvidesReadableContentUri() =
+    kotlinx.coroutines.runBlocking {
+      val context = Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+      val entries = listOf(LogEntry(1, "session", 10, 5, "Tag", "supplied ✓ message", "trace"))
+      val export = prepareLogExport(context, entries)
+      assertThat(export.file.readText()).isEqualTo(formatLogEntries(entries))
+      assertThat(export.mimeType).isEqualTo("text/plain")
+      assertThat(export.uri.scheme).isEqualTo("content")
+      assertThat(
+          context.contentResolver.openInputStream(export.uri)!!.bufferedReader().use {
+            it.readText()
+          },
+        )
+        .isEqualTo(export.file.readText())
+      shareLogs(context, formatLogEntries(entries))
+      val chooser = Shadows.shadowOf(context).nextStartedActivity
+      val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
+      val uri = send.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)!!
+      assertThat(
+          context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() },
+        )
+        .isEqualTo(export.file.readText())
+    }
+
+  @Test
   fun exitExportsPreserveRawDiagnosticsAndGrantProviderAccess() =
     kotlinx.coroutines.runBlocking {
       val context = Robolectric.buildActivity(android.app.Activity::class.java).setup().get()

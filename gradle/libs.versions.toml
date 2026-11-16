@@ -4,6 +4,7 @@ kotlin = "2.4.21"
 composeBom = "2026.09.00"
 activity = "1.13.0"
 core = "1.19.1"
+lifecycle = "2.11.0"
 timber = "5.0.1"
 coroutines = "1.11.0"
 junit = "4.13.2"
@@ -28,6 +29,7 @@ composeIcons = { module = "androidx.compose.material:material-icons-extended" }
 composeUiTest = { module = "androidx.compose.ui:ui-test-junit4" }
 composeUiTestManifest = { module = "androidx.compose.ui:ui-test-manifest" }
 activityCompose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+lifecycleRuntimeCompose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 coreKtx = { module = "androidx.core:core-ktx", version.ref = "core" }
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 coroutinesAndroid = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
