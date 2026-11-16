@@ -35,6 +35,7 @@ internal constructor(
   private val clock: () -> Long,
   private val ioDispatcher: CoroutineDispatcher,
   private val maxPendingBytes: Int,
+  redactionOption: RedactionOption = RedactionOption.NOT_SPECIFIED,
   private val createJournal: suspend (Context, String) -> Journal,
 ) : LogSource {
   /** Internal convenience constructor for capture tests. Host apps use [Builder]. */
@@ -52,7 +53,7 @@ internal constructor(
     clock,
     Dispatchers.IO,
     MAX_PENDING_BYTES,
-    { appContext, id -> DiskJournal(appContext, id) },
+    createJournal = { appContext, id -> DiskJournal(appContext, id) },
   ) {
     processExits = ProcessExitHistory.Builder(context).redact(redact).build()
   }
@@ -113,6 +114,7 @@ internal constructor(
     private var capacity = DEFAULT_CAPACITY
     private var persistAcrossCrashes = false
     private var redact: ((String) -> String)? = null
+    private var redactionOption = RedactionOption.NOT_SPECIFIED
     private var clock: () -> Long = System::currentTimeMillis
     private var processExitsEnabled = true
     private var configureProcessExits: ProcessExitHistory.Builder.() -> Unit = {}
@@ -135,7 +137,20 @@ internal constructor(
      * descriptions and foreign summaries. App notes are redacted once, when written. Platform
      * process-exit traces (ANR dumps and tombstones) are raw, including in shared details.
      */
-    public fun redact(redact: ((String) -> String)?): Builder = apply { this.redact = redact }
+    public fun redact(redact: ((String) -> String)?): Builder = apply {
+      this.redact = redact
+      redactionOption = RedactionOption.NOT_SPECIFIED
+    }
+
+    /**
+     * Leaves captured text unchanged. [RedactionOption.NO_REDACTION] explicitly opts out and
+     * suppresses the Status redaction warning; [RedactionOption.NOT_SPECIFIED] keeps the warning.
+     * Replaces any previous callback. The last call to either [redact] overload wins.
+     */
+    public fun redact(option: RedactionOption): Builder = apply {
+      redact = null
+      redactionOption = option
+    }
 
     internal fun clock(clock: () -> Long): Builder = apply { this.clock = clock }
 
@@ -175,6 +190,7 @@ internal constructor(
           clock,
           Dispatchers.IO,
           MAX_PENDING_BYTES,
+          redactionOption = redactionOption,
         ) { appContext, id ->
           DiskJournal(appContext, id)
         }
@@ -213,7 +229,14 @@ internal constructor(
   override val changes: Flow<Unit> = revision.map {}
   private val mutableCapabilities =
     MutableStateFlow(
-      LogCapabilities(true, persistAcrossCrashes, true, redact != null, isLibraryCapture = true),
+      LogCapabilities(
+        true,
+        persistAcrossCrashes,
+        true,
+        redact != null,
+        isLibraryCapture = true,
+        redactionOption = redactionOption,
+      ),
     )
   override val capabilities: StateFlow<LogCapabilities> = mutableCapabilities.asStateFlow()
   private val mutableHealth = MutableStateFlow(LogHealth(installed = false))

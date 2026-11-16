@@ -112,7 +112,10 @@ internal fun statusMessages(capabilities: LogCapabilities, health: LogHealth): L
         ),
       )
     }
-    if (!capabilities.redactionConfigured) {
+    if (
+      !capabilities.redactionConfigured &&
+        capabilities.redactionOption == RedactionOption.NOT_SPECIFIED
+    ) {
       add(
         StatusMessage(
           "Redaction is not configured",

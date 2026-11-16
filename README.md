@@ -95,6 +95,13 @@ every sensitive value, so avoid logging secrets and supply an app-specific callb
 The callback should be fast and must not log through Timber, which would recurse. If it throws,
 the affected field is replaced with `<redaction failed>`. Share uses captured entries;
 sharing is a user action through an app-private temporary file and a non-exported `FileProvider`.
+
+Without a callback, the default choice is `RedactionOption.NOT_SPECIFIED`, and Status warns that
+redaction is not configured. To intentionally keep log text unchanged without that warning, use
+`.redact(RedactionOption.NO_REDACTION)` on the capture builder. Calling
+`.redact(RedactionOption.NOT_SPECIFIED)` or `.redact(null)` restores the warning. The last `redact`
+call wins, replacing any previous callback or opt-out choice.
+
 The viewer also remembers one UI preference, whether long lines wrap in the entry details, in a
 private `SharedPreferences` file named `pnv_logviewer`; it never stores log content there.
 
@@ -205,6 +212,8 @@ out of `message`. Existing sources that include traces in `message` continue to 
 
 Status cannot inspect arbitrary Timber trees. For an external source it reports persistence and
 redaction as claims made by the host app and displays any read or write errors the adapter exposes.
+An external source can declare an intentional opt-out with
+`LogCapabilities(redactionConfigured = false, redactionOption = RedactionOption.NO_REDACTION, …)`.
 The viewer uses the host's `MaterialTheme`; it does not depend on Lazulite or AltSea styles.
 
 ## Toolbar actions

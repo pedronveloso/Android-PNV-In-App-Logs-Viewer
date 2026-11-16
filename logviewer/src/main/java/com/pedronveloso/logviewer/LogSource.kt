@@ -23,6 +23,14 @@ public data class LogSession(
   public val isCurrent: Boolean,
 )
 
+/** Choice for logs without a redaction callback. Both options leave log text unchanged. */
+public enum class RedactionOption {
+  /** No choice was made; Status warns that redaction is missing. */
+  NOT_SPECIFIED,
+  /** The developer intentionally opted out; Status shows no redaction warning. */
+  NO_REDACTION,
+}
+
 /** For external sources, these are claims supplied by the host app. */
 public data class LogCapabilities(
   public val hasInMemoryLogs: Boolean,
@@ -31,6 +39,8 @@ public data class LogCapabilities(
   public val redactionConfigured: Boolean,
   public val isLibraryCapture: Boolean = false,
   public val canClear: Boolean = true,
+  /** Used when [redactionConfigured] is false. */
+  public val redactionOption: RedactionOption = RedactionOption.NOT_SPECIFIED,
 )
 
 /** Observable integration health. Null [installed] means the host did not provide this signal. */
