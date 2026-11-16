@@ -117,6 +117,22 @@ class LogPresentationTest {
   }
 
   @Test
+  fun `intentional opt out hides only the redaction warning`() {
+    val capabilities = LogCapabilities(true, false, false, false)
+    assertThat(capabilities.redactionOption).isEqualTo(RedactionOption.NOT_SPECIFIED)
+    val original = statusMessages(capabilities, LogHealth())
+    val optedOut =
+      statusMessages(
+        capabilities.copy(redactionOption = RedactionOption.NO_REDACTION),
+        LogHealth(),
+      )
+    assertThat(optedOut)
+      .containsExactlyElementsIn(original.filterNot { it.title == "Redaction is not configured" })
+    assertThat(statusMessages(capabilities.copy(redactionConfigured = true), LogHealth()))
+      .containsExactlyElementsIn(optedOut)
+  }
+
+  @Test
   fun `external persistence is identified as declared and write failures are visible`() {
     val capabilities = LogCapabilities(true, true, true, true)
     assertThat(

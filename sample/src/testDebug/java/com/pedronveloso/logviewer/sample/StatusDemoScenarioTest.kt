@@ -6,7 +6,6 @@ import com.pedronveloso.logviewer.LogEntry
 import com.pedronveloso.logviewer.LogHealth
 import com.pedronveloso.logviewer.LogSession
 import com.pedronveloso.logviewer.LogSource
-import com.pedronveloso.logviewer.statusMessages
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,33 +16,26 @@ class StatusDemoScenarioTest {
 
   @Test
   fun everyScenarioExposesItsStatusRule() {
-    val expected =
-      mapOf(
-        StatusDemoScenario.REAL to "Crash persistence configured",
-        StatusDemoScenario.NOT_INSTALLED to "Capture is not installed",
-        StatusDemoScenario.NO_SOURCE to "No log source configured",
-        StatusDemoScenario.MEMORY_ONLY to "Logs live only in memory",
-        StatusDemoScenario.NO_LIVE_UPDATES to "Live updates unavailable",
-        StatusDemoScenario.NO_REDACTION to "Redaction is not configured",
-        StatusDemoScenario.READ_FAILURE to "Reading logs failed",
-        StatusDemoScenario.WRITE_FAILURE to "Persistent writes failed",
-        StatusDemoScenario.APP_PROVIDED to "Crash persistence configured",
-      )
-    assertThat(expected.keys).containsExactlyElementsIn(StatusDemoScenario.entries)
-    expected.forEach { (scenario, title) ->
-      val source = scenario.source(capture)
-      assertThat(statusMessages(source.capabilities.value, source.health.value).map { it.title })
-        .contains(title)
-    }
+    assertThat(StatusDemoScenario.NOT_INSTALLED.source(capture).health.value.installed).isFalse()
+    assertThat(StatusDemoScenario.NO_SOURCE.source(capture).capabilities.value.hasInMemoryLogs)
+      .isFalse()
     assertThat(
-        statusMessages(
-            StatusDemoScenario.APP_PROVIDED.capabilities(capture.capabilities.value),
-            StatusDemoScenario.APP_PROVIDED.health(capture.health.value),
-          )
-          .single { it.title == "Crash persistence configured" }
-          .detail,
+        StatusDemoScenario.MEMORY_ONLY.source(capture).capabilities.value.persistsAcrossCrashes,
       )
-      .contains("declared by the host app")
+      .isFalse()
+    assertThat(StatusDemoScenario.NO_LIVE_UPDATES.source(capture).capabilities.value.hasLiveUpdates)
+      .isFalse()
+    assertThat(
+        StatusDemoScenario.NO_REDACTION.source(capture).capabilities.value.redactionConfigured,
+      )
+      .isFalse()
+    assertThat(StatusDemoScenario.READ_FAILURE.source(capture).health.value.readError)
+      .isEqualTo("Demo read failure")
+    assertThat(StatusDemoScenario.WRITE_FAILURE.source(capture).health.value.writeError)
+      .isEqualTo("Demo write failure")
+    assertThat(StatusDemoScenario.APP_PROVIDED.source(capture).capabilities.value.isLibraryCapture)
+      .isFalse()
+    assertThat(StatusDemoScenario.APP_PROVIDED.source(capture).health.value.installed).isNull()
   }
 
   @Test

@@ -4,7 +4,7 @@ The sample's `r8` build type runs the debug sample screen with code optimization
 obfuscation, and resource shrinking enabled. It consumes the library's release variant,
 uses debug signing, and has the separate application ID
 `com.pedronveloso.logviewer.sample.r8`. The regular sample release continues to exclude the viewer.
-With AGP 9.4.1, `optimization { enable = true }` enables both code and resource optimization,
+With AGP 9.5.1, `optimization { enable = true }` enables both code and resource optimization,
 including resource shrinking; no separate shrinking flag is needed.
 
 The `:r8test` module uses UI Automator from its own process. It has no dependency on the
@@ -37,7 +37,7 @@ are in `sample/build/outputs/mapping/r8/`. The analyzer report is in
 
 The library currently needs no custom consumer keep rules. Add targeted rules only for
 demonstrated reflection or JNI entry points, and rerun this test after changing them.
-Place these rules in `logviewer/src/main/keepRules/*.keep`; AGP 9.4.1 automatically packages
+Place these rules in `logviewer/src/main/keepRules/*.keep`; AGP 9.5.1 automatically packages
 the library's `keepRules` source-set files as consumer rules, without a
 `consumerProguardFiles` declaration.
 Do not preserve the whole library package or duplicate dependency consumer rules.

@@ -1,3 +1,7 @@
+@file:Suppress(
+  "DEPRECATION",
+) // Also covers the deprecated constructor, which existing apps still call.
+
 package com.pedronveloso.logviewer
 
 import android.content.Context
@@ -106,6 +110,67 @@ class TimberLogCaptureTest {
   }
 
   @Test
+  fun `explicit opt out replaces callback and keeps raw logs across persistence`() = runBlocking {
+    val capture =
+      TimberLogCapture.Builder(context)
+        .persistAcrossCrashes(true)
+        .redact { "hidden" }
+        .redact(RedactionOption.NO_REDACTION)
+        .build()
+    capture.install()
+    Timber.tag("person@example.com").d("password=hunter2")
+    capture.uninstall()
+
+    assertThat(capture.capabilities.value.redactionConfigured).isFalse()
+    assertThat(capture.capabilities.value.redactionOption).isEqualTo(RedactionOption.NO_REDACTION)
+    assertThat(statusMessages(capture.capabilities.value, capture.health.value).map { it.title })
+      .doesNotContain("Redaction is not configured")
+    val entry = capture.entries(capture.sessions().first().id).single()
+    assertThat(entry.tag).isEqualTo("person@example.com")
+    assertThat(entry.message).isEqualTo("password=hunter2")
+    val restarted = TimberLogCapture(context, persistAcrossCrashes = true)
+    assertThat(restarted.entries(restarted.sessions().single { !it.isCurrent }.id))
+      .containsExactly(entry)
+    Unit
+  }
+
+  @Test
+  fun `unspecified default and reset choices warn about missing redaction`() {
+    listOf(
+        TimberLogCapture.Builder(context),
+        TimberLogCapture.Builder(context)
+          .redact(RedactionOption.NO_REDACTION)
+          .redact(RedactionOption.NOT_SPECIFIED),
+        TimberLogCapture.Builder(context).redact(RedactionOption.NO_REDACTION).redact(null),
+      )
+      .forEach { builder ->
+        val capture = builder.build()
+        assertThat(capture.capabilities.value.redactionConfigured).isFalse()
+        assertThat(capture.capabilities.value.redactionOption)
+          .isEqualTo(RedactionOption.NOT_SPECIFIED)
+        assertThat(
+            statusMessages(capture.capabilities.value, capture.health.value).map { it.title },
+          )
+          .contains("Redaction is not configured")
+      }
+  }
+
+  @Test
+  fun `callback replaces explicit opt out and redacts before memory storage`() = runBlocking {
+    val capture =
+      TimberLogCapture.Builder(context)
+        .redact(RedactionOption.NO_REDACTION)
+        .redact { it.replace("secret", "hidden") }
+        .build()
+    capture.install()
+    Timber.tag("secret").d("secret")
+    assertThat(capture.capabilities.value.redactionConfigured).isTrue()
+    val entry = capture.entries(capture.sessions().first().id).single()
+    assertThat(entry.tag).isEqualTo("hidden")
+    assertThat(entry.message).isEqualTo("hidden")
+  }
+
+  @Test
   fun `concurrent emissions have stable unique IDs`() = runBlocking {
     val capture = TimberLogCapture(context, capacity = 4000)
     capture.install()
@@ -140,7 +205,7 @@ class TimberLogCaptureTest {
         { 1000L },
         Dispatchers.IO,
         2 * 1024 * 1024,
-        { appContext, id ->
+        createJournal = { appContext, id ->
           initializerThread.set(Thread.currentThread())
           gate.await()
           DiskJournal(appContext, id)
@@ -181,7 +246,7 @@ class TimberLogCaptureTest {
         { 1000L },
         Dispatchers.IO,
         recordSize,
-        { appContext, id ->
+        createJournal = { appContext, id ->
           gate.await()
           DiskJournal(appContext, id)
         },
@@ -219,7 +284,7 @@ class TimberLogCaptureTest {
         { 1000L },
         Dispatchers.IO,
         2 * 1024 * 1024,
-        { appContext, id ->
+        createJournal = { appContext, id ->
           gate.await()
           DiskJournal(appContext, id)
         },
@@ -290,7 +355,7 @@ class TimberLogCaptureTest {
         { 1000L },
         Dispatchers.IO,
         2 * 1024 * 1024,
-        { _, _ -> throw IOException("Storage unavailable") },
+        createJournal = { _, _ -> throw IOException("Storage unavailable") },
       )
     capture.install()
     try {
@@ -315,7 +380,7 @@ class TimberLogCaptureTest {
         { 1000L },
         Dispatchers.IO,
         2 * 1024 * 1024,
-        { appContext, id ->
+        createJournal = { appContext, id ->
           gate.await()
           DiskJournal(appContext, id).also {
             directory.deleteRecursively()
@@ -351,7 +416,7 @@ class TimberLogCaptureTest {
         { 2000L },
         Dispatchers.IO,
         2 * 1024 * 1024,
-        { appContext, id ->
+        createJournal = { appContext, id ->
           gate.await()
           DiskJournal(appContext, id)
         },
